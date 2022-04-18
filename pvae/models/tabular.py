@@ -13,7 +13,7 @@ from pvae.vis import array_plot
 from pvae.distributions import RiemannianNormal, WrappedNormal
 from torch.distributions import Normal
 from pvae import manifolds
-from .architectures import EncLinear, DecLinear, EncWrapped, DecWrapped, EncMob, DecMob, DecGeo
+from .architectures import *
 from pvae.datasets import SyntheticDataset, CSVDataset, SyntheticTreeDistortionDataSet
 
 
@@ -87,11 +87,18 @@ class TabularAE(AE):
     def __init__(self, params):
         c = nn.Parameter(params.c * torch.ones(1), requires_grad=False)
         manifold = getattr(manifolds, params.manifold)(params.latent_dim, c)
-        super(TabularAE, self).__init__(
-            eval('Enc' + params.enc)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim, params.prior_iso),
-            eval('Dec' + params.dec)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim),
-            params
-        )
+        if 'Sim' in params.dec: # if in the simulation context, specify an extra argument for output dimension 
+            super(TabularAE, self).__init__(
+                eval('Enc' + params.enc)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim, params.prior_iso),
+                eval('Dec' + params.dec)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim, params.output_dim),
+                params
+            )
+        else:
+            super(TabularAE, self).__init__(
+                eval('Enc' + params.enc)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim, params.prior_iso),
+                eval('Dec' + params.dec)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim),
+                params
+            )
         self.manifold = manifold
         self.modelName = 'TabularAE'
 

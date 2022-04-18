@@ -148,3 +148,50 @@ class DecBernouilliWrapper(nn.Module):
     def forward(self, z):
         mu, _ = self.dec.forward(z)
         return torch.tensor(1.0).to(z.device), mu
+
+# =============== for simulation only ================
+# all accepts an additional argument: output-dim, to generalize to other output dimensions
+class DecLinearSim(DecLinear):
+    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, output_dim):
+        super().__init__(manifold, data_size, non_lin, num_hidden_layers, hidden_dim)
+        self.output_dim = output_dim
+        self.fc31 = nn.Linear(hidden_dim, prod(output_dim))  # replace the original decoder dim
+    
+    def forward(self, z):
+        d = self.dec(z)
+        mu = self.fc31(d).view(*z.size()[:-1], self.output_dim)  # reshape data
+        return mu, torch.ones_like(mu)
+
+class DecWrappedSim(DecWrapped):
+    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, output_dim):
+        super().__init__(manifold, data_size, non_lin, num_hidden_layers, hidden_dim)
+        self.output_dim = output_dim 
+        self.fc31 = nn.Linear(hidden_dim, prod(output_dim))
+    
+    def forward(self, z):
+        z = self.manifold.logmap0(z)
+        d = self.dec(z)
+        mu = self.fc31(d).view(*z.size()[:-1], self.output_dim)  # reshape data
+        return mu, torch.ones_like(mu)
+
+class DecGeoSim(DecGeo):
+    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, output_dim):
+        super().__init__(manifold, data_size, non_lin, num_hidden_layers, hidden_dim)
+        self.output_dim = output_dim
+        self.fc31 = nn.Linear(hidden_dim, prod(output_dim))
+    
+    def forward(self, z):
+        d = self.dec(z)
+        mu = self.fc31(d).view(*z.size()[:-1], self.output_dim)  # reshape data
+        return mu, torch.ones_like(mu)
+
+class DecMobSim(DecMob):
+    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, output_dim):
+        super().__init__(manifold, data_size, non_lin, num_hidden_layers, hidden_dim)
+        self.output_dim = output_dim 
+        self.fc31 = nn.Linear(hidden_dim, prod(output_dim))
+    
+    def forward(self, z):
+        d = self.dec(z)
+        mu = self.fc31(d).view(*z.size()[:-1], self.output_dim)  # reshape data
+        return mu, torch.ones_like(mu)

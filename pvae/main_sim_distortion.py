@@ -87,11 +87,13 @@ parser.add_argument('--num-hidden-layers', type=int, default=1, metavar='H',
                     help='number of hidden layers in enc and dec (default: 1)')
 parser.add_argument('--hidden-dim', type=int, default=100,
                     help='number of hidden layers dimensions (default: 100)')
+parser.add_argument('--output-dim', type=int, default=None,
+                    help='output dimension, just for distortion simulation (if None, output = input)')
 parser.add_argument('--nl', type=str, default='ReLU', help='non linearity')
 parser.add_argument('--enc', type=str, default='Wrapped', help='allow to choose different implemented encoder',
                     choices=['Linear', 'Wrapped', 'Mob'])
 parser.add_argument('--dec', type=str, default='Wrapped', help='allow to choose different implemented decoder',
-                    choices=['Linear', 'Wrapped', 'Geo', 'Mob'])
+                    choices=['Linear', 'Wrapped', 'Geo', 'Mob', 'LinearSim', 'WrappedSim', 'GeoSim', 'MobSim'])
 
 ## Prior
 parser.add_argument('--prior-iso', action='store_true',

@@ -1,4 +1,6 @@
 # load packages 
+import os 
+import pickle
 from csv import reader
 import numpy as np
 from itertools import combinations
@@ -147,7 +149,6 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
         - build KNN, precompute shortest path distances 
     
     :param n: the dimension 
-    :param start_points_array_path: if not none, provide the staring point to construct (read from txt)
     :param num_start_points: number of starting points to connect 
     :param num_points: the number of points to generate at the end 
     :param k: number of neighbors for connection
@@ -161,11 +162,9 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
         n: int,
         num_start_points: int = 6,
         num_points: int = 500,
-        k: int=5,
-        start_points_array_path: str = None,
+        k: int=5
     ) -> None:
-        self.n = int(n)
-        self.start_points_array_path = start_points_array_path
+        self.n = n
         self.num_start_points = num_start_points
         self.num_points = num_points
         self.k = k
@@ -215,13 +214,11 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
 
     def make_tree_data(self):
         """ construct tree like data """
-        # randomly create starting points from within a unit cube # ? is this good ?
-        if self.start_points_array_path is None:
-            start_points_array = np.random.uniform(
-                low=-1, high=1, size=(self.num_start_points, self.n)
-            )
-        else:
-            raise NotImplementedError()  # TODO: read from file if needed 
+        # randomly create starting points from within a unit cube # TODO: check generating process
+        start_points_array = np.random.uniform(
+            low=-1, high=1, size=(self.num_start_points, self.n)
+        )
+        self.centroids = start_points_array  # for manual examination only
 
         start_points_array_dict = dict(zip(range(start_points_array.shape[0]), start_points_array))
 
@@ -272,4 +269,40 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
             cur_shortest_dist = nx.shortest_path_length(g, idx_1, idx_2)
             shortest_path_dict[(idx_1, idx_2)] = cur_shortest_dist
 
+        return sim_data_points_dict, shortest_path_dict
+
+
+class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
+    """alternative to the above, read from file """
+    def __init__(
+        self, 
+        folder_name: str
+    ) -> None:
+        self.path = folder_name
+
+        # construct tree 
+        self.sim_data_points_dict, self.shortest_path_dict = self.read_tree_data()
+
+        # unpack 
+        label_data_tuple = list(self.sim_data_points_dict.items())
+        self.data = np.vstack([x[1] for x in label_data_tuple])
+        self.labels = np.array([[x[0] for x in label_data_tuple]]).T
+        
+
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, index):
+        data = self.data[index]
+        label = self.labels[index]
+        return torch.Tensor(data), torch.Tensor(label)
+
+    # ----- util ------
+    def read_tree_data(self):
+        """read from file"""
+        with open(os.path.join('data', self.path, 'sim_tree_dict.pkl'), 'rb') as f:
+            dicts = pickle.load(f)
+        
+        sim_data_points_dict = dicts['sim_data_points_dict']
+        shortest_path_dict = dicts['shortest_path_dict']
         return sim_data_points_dict, shortest_path_dict

@@ -14,7 +14,7 @@ from pvae.distributions import RiemannianNormal, WrappedNormal
 from torch.distributions import Normal
 from pvae import manifolds
 from .architectures import *
-from pvae.datasets import SyntheticDataset, CSVDataset, SyntheticTreeDistortionDataSet
+from pvae.datasets import SyntheticDataset, CSVDataset, SyntheticTreeDistortionDataSet, SyntheticTreeDistortionDataSetFromFile
 
 
 class Tabular(VAE):
@@ -112,7 +112,25 @@ class SimTreeDistortion(TabularAE):
         """ return an additional shortest path dict for loss tuning """
         kwargs = {'num_workers': 1, 'pin_memory': True} if device == "cuda" else {}
         print('Load training data...')
-        dataset = SyntheticTreeDistortionDataSet(*self.data_size, *map(lambda x: int(x), args))  # TODO: accept str for path
+        dataset = SyntheticTreeDistortionDataSet(*self.data_size, *map(lambda x: int(x), args))
+        n_train, n_test = _validate_shuffle_split(len(dataset), test_size=None, train_size=0.7)
+        train_dataset, test_dataset = torch.utils.data.random_split(dataset, [n_train, n_test])
+        # full batch training to account for pairwise comparison 
+        train_loader = DataLoader(train_dataset, batch_size=len(train_dataset), drop_last=False, shuffle=shuffle, **kwargs)
+        test_loader = DataLoader(test_dataset, batch_size=len(test_dataset), drop_last=False, shuffle=False, **kwargs)
+        overall_loader = DataLoader(dataset, batch_size=len(dataset), drop_last=False, shuffle=False, **kwargs)  # for overall distortion
+        return train_loader, test_loader, overall_loader, dataset.shortest_path_dict
+
+class SimTreeDistortionFromFile(TabularAE):
+    """ read from file version """
+    def __init__(self, params):
+        super(SimTreeDistortionFromFile, self).__init__(params)
+    
+    def getDataLoaders(self, batch_size, shuffle, device, *args):
+        """ return an additional shortest path dict for loss tuning """
+        kwargs = {'num_workers': 1, 'pin_memory': True} if device == "cuda" else {}
+        print('Load training data...')
+        dataset = SyntheticTreeDistortionDataSetFromFile(*args)
         n_train, n_test = _validate_shuffle_split(len(dataset), test_size=None, train_size=0.7)
         train_dataset, test_dataset = torch.utils.data.random_split(dataset, [n_train, n_test])
         # full batch training to account for pairwise comparison 

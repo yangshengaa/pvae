@@ -7,13 +7,14 @@ from torch.utils.data import DataLoader
 import math
 from sklearn.model_selection._split import _validate_shuffle_split
 from .vae import VAE
+from .ae import AE
 from pvae.vis import array_plot
 
 from pvae.distributions import RiemannianNormal, WrappedNormal
 from torch.distributions import Normal
 from pvae import manifolds
 from .architectures import EncLinear, DecLinear, EncWrapped, DecWrapped, EncMob, DecMob, DecGeo
-from pvae.datasets import SyntheticDataset, CSVDataset
+from pvae.datasets import SyntheticDataset, CSVDataset, SyntheticTreeDistortionDataSet
 
 
 class Tabular(VAE):
@@ -78,3 +79,37 @@ class CSV(Tabular):
         train_loader = DataLoader(train_dataset, batch_size=batch_size, drop_last=True, shuffle=shuffle, **kwargs)
         test_loader = DataLoader(test_dataset, batch_size=batch_size, drop_last=True, shuffle=False, **kwargs)
         return train_loader, test_loader
+
+# ========== for simulation only ===========
+
+class TabularAE(AE):
+    """ tabular, but vanilla autoencoder version """
+    def __init__(self, params):
+        c = nn.Parameter(params.c * torch.ones(1), requires_grad=False)
+        manifold = getattr(manifolds, params.manifold)(params.latent_dim, c)
+        super(TabularAE, self).__init__(
+            eval('Enc' + params.enc)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim, params.prior_iso),
+            eval('Dec' + params.dec)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim),
+            params
+        )
+        self.manifold = manifold
+        self.modelName = 'TabularAE'
+
+        
+class SimTreeDistortion(TabularAE):
+    """ derive a specific sub-class of a VAE for custom synthetic tree data for distortion exploration """
+    def __init__(self, params):
+        super(SimTreeDistortion, self).__init__(params)
+    
+    def getDataLoaders(self, batch_size, shuffle, device, *args):
+        """ return an additional shortest path dict for loss tuning """
+        kwargs = {'num_workers': 1, 'pin_memory': True} if device == "cuda" else {}
+        print('Load training data...')
+        dataset = SyntheticTreeDistortionDataSet(*self.data_size, *map(lambda x: int(x), args))  # TODO: accept str for path
+        n_train, n_test = _validate_shuffle_split(len(dataset), test_size=None, train_size=0.7)
+        train_dataset, test_dataset = torch.utils.data.random_split(dataset, [n_train, n_test])
+        # full batch training to account for pairwise comparison 
+        train_loader = DataLoader(train_dataset, batch_size=len(train_dataset), drop_last=False, shuffle=shuffle, **kwargs)
+        test_loader = DataLoader(test_dataset, batch_size=len(test_dataset), drop_last=False, shuffle=False, **kwargs)
+        overall_loader = DataLoader(dataset, batch_size=len(dataset), drop_last=False, shuffle=False, **kwargs)  # for overall distortion
+        return train_loader, test_loader, overall_loader, dataset.shortest_path_dict

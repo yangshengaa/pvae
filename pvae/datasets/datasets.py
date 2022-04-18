@@ -1,7 +1,15 @@
+# load packages 
+from csv import reader
+import numpy as np
+from itertools import combinations
+from typing import Dict, List, Tuple
+
+import networkx as nx 
+
+from sklearn.neighbors import NearestNeighbors
+
 import torch
 import torch.utils.data
-import numpy as np
-from csv import reader
 
 
 def load_csv(filename):
@@ -125,3 +133,143 @@ class SyntheticDataset(torch.utils.data.Dataset):
         values_clones = np.concatenate([i for i in values_clones]).reshape(self.numberOfsiblings*length, self.dim)
         labels_clones = np.concatenate([i for i in labels_clones]).reshape(self.numberOfsiblings*length, self.depth+1)
         return images, labels_visited, values_clones, labels_clones
+
+# =========== for simulation use only ===============
+class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
+    """
+    explore distortion of tree like dataset using a hyperbolic embeddings 
+
+    construct a tree-like data for simulation. The procedure is as follows:
+        - randomly throw points 
+        - build mst connecting these points 
+        - randomly sample data points from its edge
+        - add gaussian noise 
+        - build KNN, precompute shortest path distances 
+    
+    :param n: the dimension 
+    :param start_points_array_path: if not none, provide the staring point to construct (read from txt)
+    :param num_start_points: number of starting points to connect 
+    :param num_points: the number of points to generate at the end 
+    :param k: number of neighbors for connection
+    :return two dictionaries: 
+        - Dict[idx, np.array] recording the original data points and 
+        - Dict[(idx, idx), int] recording the shortest path distance 
+    """
+
+    def __init__(
+        self, 
+        n: int,
+        num_start_points: int = 6,
+        num_points: int = 500,
+        k: int=5,
+        start_points_array_path: str = None,
+    ) -> None:
+        self.n = int(n)
+        self.start_points_array_path = start_points_array_path
+        self.num_start_points = num_start_points
+        self.num_points = num_points
+        self.k = k
+
+        # construct tree 
+        self.sim_data_points_dict, self.shortest_path_dict = self.make_tree_data()
+
+        # unpack 
+        label_data_tuple = list(self.sim_data_points_dict.items())
+        self.data = np.vstack([x[1] for x in label_data_tuple])
+        self.labels = np.array([[x[0] for x in label_data_tuple]]).T
+        
+
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, index):
+        data = self.data[index]
+        label = self.labels[index]
+        return torch.Tensor(data), torch.Tensor(label)
+
+    # ------- util -------
+    def kruskal(self, start_points_array_dict: Dict):
+        """ construct an mst, return edges """
+        # compute pairwise Euclidean distance
+        start_points_dist_dict = {}
+        start_points_indices = start_points_array_dict.keys()
+        idx_combinations = combinations(start_points_indices, 2)
+
+        for idx_1, idx_2 in idx_combinations:
+            start_point_1, start_point_2 = start_points_array_dict[idx_1], start_points_array_dict[idx_2]
+            cur_dist = np.linalg.norm(start_point_1 - start_point_2)
+            start_points_dist_dict[(idx_1, idx_2)] = cur_dist
+
+        # sort in increasing order
+        dist_sorted_tuple = sorted(start_points_dist_dict.items(), key=lambda x: x[1])
+
+        # construct an empty graph
+        g = nx.Graph()
+        g.add_nodes_from(start_points_indices)
+        for (idx_1, idx_2), cur_dist in dist_sorted_tuple:
+            if not nx.has_path(g, idx_1, idx_2):
+                g.add_edge(idx_1, idx_2)
+
+        edges = g.edges
+        return edges
+
+    def make_tree_data(self):
+        """ construct tree like data """
+        # randomly create starting points from within a unit cube # ? is this good ?
+        if self.start_points_array_path is None:
+            start_points_array = np.random.uniform(
+                low=-1, high=1, size=(self.num_start_points, self.n)
+            )
+        else:
+            raise NotImplementedError()  # TODO: read from file if needed 
+
+        start_points_array_dict = dict(zip(range(start_points_array.shape[0]), start_points_array))
+
+        # construct MST
+        edges = self.kruskal(start_points_array_dict)
+
+        # generate noise
+        scale = abs(np.min(np.max(start_points_array, axis=0))) / 10  # ! tune it
+        gaussian_noise = np.random.normal(scale=scale, size=(self.num_points, self.n))
+
+        # select edges and select branching point
+        num_points_per_edge = self.num_points // len(edges)
+        remainder = self.num_points - num_points_per_edge * len(edges)
+        num_points_by_edge = [num_points_per_edge] * len(edges)
+        num_points_by_edge[np.random.choice(range(len(edges)))] += remainder
+
+        selected_branching_points = []
+        for cur_num_points, (idx_1, idx_2) in zip(num_points_by_edge, edges):
+            v1, v2 = start_points_array_dict[idx_1], start_points_array_dict[idx_2]
+            random_prop = np.random.uniform(
+                low=-scale,
+                high=1+scale,
+                size=(cur_num_points, 1)
+            )
+            random_branching_points = random_prop * (v2 - v1) + v1
+            selected_branching_points.append(random_branching_points)
+
+        # concat
+        selected_branching_points = np.vstack(selected_branching_points)
+        sim_data_points = selected_branching_points + gaussian_noise  # add noise
+        sim_data_points_dict = dict(zip(range(self.num_points), sim_data_points))
+
+        # KNN
+        nbrs = NearestNeighbors(n_neighbors=self.k+1).fit(sim_data_points)
+        adj_matrix = nbrs.kneighbors_graph(
+            sim_data_points).toarray() - np.eye(self.num_points)  # remove self-loops
+
+        # construct graph
+        g = nx.from_numpy_array(adj_matrix)
+        if not nx.is_connected(g):  # redo randomization if not connected
+            print('Randomized dataset not connected, redo randomization')
+            return self.make_tree_data()
+
+        # record shortest path distances
+        shortest_path_dict = {}
+        sim_data_indices = combinations(range(self.num_points), 2)
+        for idx_1, idx_2 in sim_data_indices:
+            cur_shortest_dist = nx.shortest_path_length(g, idx_1, idx_2)
+            shortest_path_dict[(idx_1, idx_2)] = cur_shortest_dist
+
+        return sim_data_points_dict, shortest_path_dict

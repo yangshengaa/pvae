@@ -295,3 +295,6 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# simulation commands 
+simulation*

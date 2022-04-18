@@ -1,8 +1,12 @@
+from numpy import prod
+
+from functools import partial
+
 import torch
 import torch.distributions as dist
-from numpy import prod
-from pvae.utils import has_analytic_kl, log_mean_exp
 import torch.nn.functional as F
+
+from pvae.utils import has_analytic_kl, log_mean_exp, Constants
 
 def vae_objective(model, x, K=1, beta=1.0, components=False, analytical_kl=False, **kwargs):
     """Computes E_{p(x)}[ELBO] """
@@ -43,3 +47,70 @@ def iwae_objective(model, x, K):
         for bx in x.split(split_size):
             obj = obj + _iwae_objective_vec(model, bx, K)
     return obj
+
+# ============ for simulation only =============
+def _hyperbolic_distance(z, y, c=1):
+    """ helper function to compute the hyperbolic distance """
+    # TODO: go through this with Zhengchao for validation, and nan issues
+    dist = 1 / torch.sqrt(c) * torch.arccosh(
+        1 + 2 * c * torch.linalg.norm(z - y) ** 2 / ( 
+            (1 - c * torch.linalg.norm(z) ** 2) * (1 - c * torch.linalg.norm(y) ** 2) + Constants.eta  # ? necessary to add eta ? 
+        )
+    )
+    return dist
+
+def _distortion_rate(emb_dists, real_dists):
+    """ compute the distortion rate from embedding distances and real distances """
+    # TODO: go through this with Zhengchao for validation 
+    with torch.no_grad():
+        contractions = real_dists / emb_dists
+        expansions = emb_dists / real_dists
+        contraction = torch.max(contractions)
+        expansion = torch.max(expansions)
+        distortion = contraction * expansion
+        return distortion
+
+def ae_pairwise_dist_objective(model, data, labels, shortest_path_dict, use_hyperbolic=False, c=1):
+    """
+    minimize regression MSE (equally weighted) on the estimated pairwise distance. The output distance is 
+    either measured in Euclidean or in hyperbolic sense
+
+    :param c: the curvature, if use_hyperbolic is true 
+    """
+    reconstructed_data = model(data).squeeze()
+    loss = 0
+
+    # determine distance function 
+    if use_hyperbolic:
+        dist_f = partial(_hyperbolic_distance, c=c)
+    else:
+        dist_f = lambda x1, x2: torch.linalg.norm(x1 - x2)
+    
+    # compute pairwise dist MSE
+    emb_dists, real_dists = [], []
+    for i in range(len(reconstructed_data) - 1):
+        reconstructed_data_1 = reconstructed_data[i]
+        label_1 = labels[i].item()
+        for j in range(i + 1, len(reconstructed_data)):
+            reconstructed_data_2 = reconstructed_data[j]
+            label_2 = labels[j].item()
+
+            cur_dist = dist_f(reconstructed_data_1, reconstructed_data_2)
+            real_dist = shortest_path_dict[(min(label_1, label_2), max(label_1, label_2))]
+
+            # compute loss 
+            loss += (cur_dist - real_dist) ** 2
+
+            # record dist for distortion 
+            emb_dists.append(cur_dist)
+            real_dists.append(real_dist)
+
+    # normalize loss 
+    loss /= (len(data) * len(data) - 1)
+
+    # compute distortion 
+    emb_dists = torch.Tensor(emb_dists)
+    real_dists = torch.Tensor(real_dists)
+    distortion_rate = _distortion_rate(emb_dists, real_dists)
+
+    return loss, distortion_rate

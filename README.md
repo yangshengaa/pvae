@@ -53,3 +53,10 @@ python3 pvae/main.py --model mnist --manifold PoincareBall --c 0.7  --latent-dim
 python3 pvae/main.py --model csv --data-param CSV_NAME --data-size NB_FEATURES
 ```
 
+## Run Custom Simulation (Notes from Sheng Yang)
+
+To simulate, use
+
+```bash
+python3 pvae/main_sim_distortion.py --model simtree --manifold PoincareBall --latent-dim 2 --hidden-dim 200 --c 1.2 --data-size 10 --data-params 8 100 5 --dec Wrapped --enc Wrapped  --epochs 500 --lr 1e-3
+```

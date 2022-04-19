@@ -214,10 +214,18 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
 
     def make_tree_data(self):
         """ construct tree like data """
-        # randomly create starting points from within a unit cube # TODO: check generating process
+        # randomly create starting points from within a unit cube 
         start_points_array = np.random.uniform(
             low=-1, high=1, size=(self.num_start_points, self.n)
         )
+        # start_points_array = np.array([
+        #     [0, 1/3],
+        #     [0, -1/3],
+        #     [0.5, 0.75],
+        #     [0.5, -0.75],
+        #     [-0.5, 0.75],
+        #     [-0.5, -0.75]
+        # ])  # temporary!  for specific generation only 
         self.centroids = start_points_array  # for manual examination only
 
         start_points_array_dict = dict(zip(range(start_points_array.shape[0]), start_points_array))
@@ -252,9 +260,8 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
         sim_data_points_dict = dict(zip(range(self.num_points), sim_data_points))
 
         # KNN
-        nbrs = NearestNeighbors(n_neighbors=self.k+1).fit(sim_data_points)
-        adj_matrix = nbrs.kneighbors_graph(
-            sim_data_points).toarray() - np.eye(self.num_points)  # remove self-loops
+        nbrs = NearestNeighbors(n_neighbors=self.k+1, n_jobs=-1).fit(sim_data_points)
+        adj_matrix = nbrs.kneighbors_graph(sim_data_points).toarray() - np.eye(self.num_points)  # remove self-loops
 
         # construct graph
         g = nx.from_numpy_array(adj_matrix)
@@ -265,9 +272,16 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
         # record shortest path distances
         shortest_path_dict = {}
         sim_data_indices = combinations(range(self.num_points), 2)
+
+        # path dist along an edge 
+        for idx_1, idx_2 in g.edges:
+            data_1, data_2 = sim_data_points_dict[idx_1], sim_data_points_dict[idx_2]
+            cur_dist = np.linalg.norm(data_1 - data_2)
+            g.edges[idx_1, idx_2]['dist'] = cur_dist  # passed in as attributes
+
         for idx_1, idx_2 in sim_data_indices:
-            cur_shortest_dist = nx.shortest_path_length(g, idx_1, idx_2)
-            shortest_path_dict[(idx_1, idx_2)] = cur_shortest_dist
+            cur_shortest_dist = nx.shortest_path_length(g, idx_1, idx_2, weight='dist')
+            shortest_path_dict[(idx_1, idx_2)] = torch.tensor(cur_shortest_dist)
 
         return sim_data_points_dict, shortest_path_dict
 
@@ -305,4 +319,9 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
         
         sim_data_points_dict = dicts['sim_data_points_dict']
         shortest_path_dict = dicts['shortest_path_dict']
+
+        # convert to tensor distance 
+        for key, value in shortest_path_dict.items():
+            shortest_path_dict[key] = torch.tensor(value)
+        
         return sim_data_points_dict, shortest_path_dict

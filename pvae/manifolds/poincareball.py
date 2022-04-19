@@ -63,6 +63,8 @@ class PoincareBall(PoincareBallParent):
             res = res * a_norm# * self.lambda_x(a, dim=dim, keepdim=keepdim)
         return res
 
+        # TODO: suggestion from Zhengchao: try <log_p x, w> 
+
 
 
 class PoincareBallExact(PoincareBall):

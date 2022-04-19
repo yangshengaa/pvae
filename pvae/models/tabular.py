@@ -8,6 +8,7 @@ import math
 from sklearn.model_selection._split import _validate_shuffle_split
 from .vae import VAE
 from .ae import AE
+from .enc import Enc
 from pvae.vis import array_plot
 
 from pvae.distributions import RiemannianNormal, WrappedNormal
@@ -102,8 +103,27 @@ class TabularAE(AE):
         self.manifold = manifold
         self.modelName = 'TabularAE'
 
-        
-class SimTreeDistortion(TabularAE):
+
+class TabularEnc(Enc):
+    """ tabular, but only with an encoder layer """
+    def __init__(self, params):
+        c = nn.Parameter(params.c * torch.ones(1), requires_grad=False)
+        manifold = getattr(manifolds, params.manifold)(params.latent_dim, c)
+        if 'Sim' in params.dec: # if in the simulation context, specify an extra argument for output dimension 
+            super(TabularEnc, self).__init__(
+                eval('Enc' + params.enc)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim, params.prior_iso),
+                params
+            )
+        else:
+            super(TabularEnc, self).__init__(
+                eval('Enc' + params.enc)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim, params.prior_iso),
+                params
+            )
+        self.manifold = manifold
+        self.modelName = 'TabularEnc'
+
+
+class SimTreeDistortion(TabularEnc):
     """ derive a specific sub-class of a VAE for custom synthetic tree data for distortion exploration """
     def __init__(self, params):
         super(SimTreeDistortion, self).__init__(params)
@@ -121,7 +141,7 @@ class SimTreeDistortion(TabularAE):
         overall_loader = DataLoader(dataset, batch_size=len(dataset), drop_last=False, shuffle=False, **kwargs)  # for overall distortion
         return train_loader, test_loader, overall_loader, dataset.shortest_path_dict
 
-class SimTreeDistortionFromFile(TabularAE):
+class SimTreeDistortionFromFile(TabularEnc):
     """ read from file version """
     def __init__(self, params):
         super(SimTreeDistortionFromFile, self).__init__(params)

@@ -2,6 +2,7 @@
 for simulation to test distortion only, copy from main with minor modifications
 """
 
+from email.policy import default
 import sys
 sys.path.append(".")
 sys.path.append("..")
@@ -115,15 +116,15 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 device = torch.device("cuda" if args.cuda else "cpu")
 args.prior_iso = args.prior_iso or args.posterior == 'RiemannianNormal'
 
-# Choosing and saving a random seed for reproducibility
-if args.seed == 0:
-    args.seed = int(torch.randint(0, 2**32 - 1, (1,)).item())
-print('seed', args.seed)
-torch.manual_seed(args.seed)
-np.random.seed(args.seed)
-torch.cuda.manual_seed_all(args.seed)
-torch.manual_seed(args.seed)
-torch.backends.cudnn.deterministic = True
+# # Choosing and saving a random seed for reproducibility
+# if args.seed == 0:
+#     args.seed = int(torch.randint(0, 2**32 - 1, (1,)).item())
+# print('seed', args.seed)
+# torch.manual_seed(args.seed)
+# np.random.seed(args.seed)
+# torch.cuda.manual_seed_all(args.seed)
+# torch.manual_seed(args.seed)
+# torch.backends.cudnn.deterministic = True
 
 # * disable model saving for now 
 
@@ -149,7 +150,7 @@ torch.backends.cudnn.deterministic = True
 # torch.save(args, '{}/args.rar'.format(runPath))
 
 # Initialise model, optimizer, dataset loader and loss function
-modelC = getattr(models, 'AE_{}'.format(args.model))
+modelC = getattr(models, 'Enc_{}'.format(args.model))
 model = modelC(args).to(device)
 optimizer = optim.Adam(model.parameters(), lr=args.lr, amsgrad=True, betas=(args.beta1, args.beta2))
 train_loader, test_loader, overall_loader, shortest_path_dict = model.getDataLoaders(
@@ -164,7 +165,7 @@ curvature = torch.Tensor([args.c]).to(device)
 def train(epoch, agg):
     model.train()
     b_loss = 0.
-    for _, (data, labels) in enumerate(train_loader): 
+    for _, (data, labels) in enumerate(overall_loader):  # no train test split needed, yet  
         data = data.to(device)
         labels = labels.to(device)
         optimizer.zero_grad()
@@ -178,54 +179,63 @@ def train(epoch, agg):
 
         b_loss += loss.item()
 
-    agg['train_loss'].append(b_loss)
+    # agg['train_loss'].append(b_loss)
+    agg['distortion'] = train_distortion
+    agg['train_loss'] = b_loss
     if epoch % 1 == 0:
-        print(f'====> Epoch: {epoch:03d} Train Loss: {agg["train_loss"][-1]:.2f}, Train Distortion: {train_distortion:.2f}, ', end='')
+        print(f'====> Epoch: {epoch:03d} Train Loss: {b_loss:.2f}, Train Distortion: {train_distortion:.2f}')
 
 
-def test(epoch, agg):
-    model.eval()
-    b_loss = 0. 
-    with torch.no_grad():
-        for _, (data, labels) in enumerate(test_loader):
-            data = data.to(device)
-            labels = labels.to(device)
-            loss, test_distortion = loss_function(
-                model, data, labels, shortest_path_dict, 
-                use_hyperbolic=use_hyperbolic, c=curvature
-            )
+# def test(epoch, agg):
+#     model.eval()
+#     b_loss = 0. 
+#     with torch.no_grad():
+#         for _, (data, labels) in enumerate(test_loader):
+#             data = data.to(device)
+#             labels = labels.to(device)
+#             loss, test_distortion = loss_function(
+#                 model, data, labels, shortest_path_dict, 
+#                 use_hyperbolic=use_hyperbolic, c=curvature
+#             )
 
-            b_loss += loss.item()
+#             b_loss += loss.item()
 
-    agg['test_loss'].append(b_loss)
-    print('Test loss: {:.4f}, Test Distortion: {:.2f}'.format(agg['test_loss'][-1], test_distortion))
+#     agg['test_loss'].append(b_loss)
+#     print('Test loss: {:.4f}, Test Distortion: {:.2f}'.format(agg['test_loss'][-1], test_distortion))
 
 
-def eval_overall(agg):
-    with torch.no_grad():
-        for _, (data, labels) in enumerate(overall_loader):  # gauranteed full batch, run once
-            data = data.to(device)
-            labels = labels.to(device)
-            overall_loss, overall_distortion = loss_function(
-                model, data, labels, shortest_path_dict,
-                use_hyperbolic=use_hyperbolic, c=curvature
-            )
-    agg['overall_loss'].append(overall_loss)
-    print(f'Overall loss: {overall_loss:2f}, Overall Distortion: {overall_distortion:.2f}')
+# def eval_overall(agg):
+#     with torch.no_grad():
+#         for _, (data, labels) in enumerate(overall_loader):  # gauranteed full batch, run once
+#             data = data.to(device)
+#             labels = labels.to(device)
+#             overall_loss, overall_distortion = loss_function(
+#                 model, data, labels, shortest_path_dict,
+#                 use_hyperbolic=use_hyperbolic, c=curvature
+#             )
+#     agg['overall_loss'].append(overall_loss)
+#     print(f'Overall loss: {overall_loss:2f}, Overall Distortion: {overall_distortion:.2f}')
 
 
 if __name__ == '__main__':
     with Timer('ME-VAE') as t:
-        agg = defaultdict(list)
+        # agg = defaultdict(list)
+        agg = defaultdict(int)
         print('Starting training...')
 
         # model.init_last_layer_bias(train_loader)
         for epoch in range(1, args.epochs + 1):
             train(epoch, agg)
             # print(epoch)
-            if args.save_freq == 0 or epoch % args.save_freq == 0:
-                if not args.skip_test:
-                    test(epoch, agg)
+            # if args.save_freq == 0 or epoch % args.save_freq == 0:
+            #     if not args.skip_test:
+            #         test(epoch, agg)
             # save_model(model, runPath + '/model.rar')
             # save_vars(agg, runPath + '/losses.rar')
-        eval_overall(agg)
+        # eval_overall(agg)
+
+        # record simulation results
+        sim_record_path = 'experiments/sim_records.txt'
+        with open(sim_record_path, 'a') as f:
+            f.write(f'{args.data_params[0]}, {args.data_size[0]}, {args.latent_dim}, {args.enc}, {args.use_hyperbolic}, {args.c}, {agg["train_loss"]}, {agg["distortion"]}')
+            f.write('\n')

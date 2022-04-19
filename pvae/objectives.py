@@ -49,19 +49,29 @@ def iwae_objective(model, x, K):
     return obj
 
 # ============ for simulation only =============
-def _hyperbolic_distance(z, y, c=1):
-    """ helper function to compute the hyperbolic distance """
-    # TODO: go through this with Zhengchao for validation, and nan issues
+def _hyperbolic_distance(z, y, c=1, thr=0.9):
+    """ 
+    helper function to compute the hyperbolic distance 
+
+    :param thr: threshold for numerical stability
+    """
+    z_norm = torch.linalg.norm(z)
+    y_norm = torch.linalg.norm(y)
+
+    # hard threshold: https://doi.org/10.48550/arXiv.2107.11472
+    z = z * thr / z_norm if z_norm > thr else z
+    y = y * thr / y_norm if y_norm > thr else y
+
+    # distance
     dist = 1 / torch.sqrt(c) * torch.arccosh(
         1 + 2 * c * torch.linalg.norm(z - y) ** 2 / ( 
-            (1 - c * torch.linalg.norm(z) ** 2) * (1 - c * torch.linalg.norm(y) ** 2) + Constants.eta  # ? necessary to add eta ? 
+            (1 - c * z_norm ** 2) * (1 - c * y_norm ** 2)  
         )
     )
     return dist
 
 def _distortion_rate(emb_dists, real_dists):
     """ compute the distortion rate from embedding distances and real distances """
-    # TODO: go through this with Zhengchao for validation 
     with torch.no_grad():
         contractions = real_dists / emb_dists
         expansions = emb_dists / real_dists
@@ -106,7 +116,7 @@ def ae_pairwise_dist_objective(model, data, labels, shortest_path_dict, use_hype
             real_dists.append(real_dist)
 
     # normalize loss 
-    loss /= (len(data) * len(data) - 1)
+    loss /= (len(data) * (len(data) - 1))
 
     # compute distortion 
     emb_dists = torch.Tensor(emb_dists)

@@ -8,6 +8,9 @@ import torch.nn.functional as F
 
 from pvae.utils import has_analytic_kl, log_mean_exp, Constants
 
+# cuda specification
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 def vae_objective(model, x, K=1, beta=1.0, components=False, analytical_kl=False, **kwargs):
     """Computes E_{p(x)}[ELBO] """
     qz_x, px_z, zs = model(x, K)
@@ -84,8 +87,8 @@ def _distortion_rate(emb_dists, real_dists):
     """ compute distortion rate """ 
     with torch.no_grad():
         N = emb_dists.shape[0]
-        emb_dists_shift = emb_dists + torch.eye(N) 
-        real_dists_shift = real_dists + torch.eye(N)
+        emb_dists_shift = emb_dists + torch.eye(N).to(device) 
+        real_dists_shift = real_dists + torch.eye(N).to(device)
 
         contractions = real_dists_shift / (emb_dists_shift + Constants.eta)
         expansions = emb_dists_shift / (real_dists_shift + Constants.eta)

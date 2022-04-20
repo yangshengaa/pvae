@@ -282,7 +282,7 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
         for idx_1, idx_2 in sim_data_indices:
             cur_shortest_dist = nx.shortest_path_length(g, idx_1, idx_2, weight='dist')
             shortest_path_dict[(idx_1, idx_2)] = torch.tensor(cur_shortest_dist)
-
+        # TODO: save matrix as well
         return sim_data_points_dict, shortest_path_dict
 
 
@@ -295,7 +295,8 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
         self.path = folder_name
 
         # construct tree 
-        self.sim_data_points_dict, self.shortest_path_dict = self.read_tree_data()
+        self.sim_data_points_dict, self.shortest_path_dict, self.shortest_path_mat = self.read_tree_data()
+        # self.shortest_path_mat = self.convert_shortest_path_dict_to_matrix(self.shortest_path_dict)
 
         # unpack 
         label_data_tuple = list(self.sim_data_points_dict.items())
@@ -323,5 +324,22 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
         # convert to tensor distance 
         for key, value in shortest_path_dict.items():
             shortest_path_dict[key] = torch.tensor(value)
+
+        # read mat 
+        with open(os.path.join('data', self.path, 'sim_tree_dist_mat.npy'), 'rb') as f:
+            shortest_path_mat = np.load(f)
+        shortest_path_mat = torch.Tensor(shortest_path_mat)
+
+        return sim_data_points_dict, shortest_path_dict, shortest_path_mat
+
+    # def convert_shortest_path_dict_to_matrix(self, shortest_path_dict):
+    #     """ convert dictionary into a symmetric matrix """
+    #     num_data_points = np.max([x[1] for x in shortest_path_dict.keys()]) + 1
+    #     dist_mat = torch.zeros(num_data_points, num_data_points)
+
+    #     # populate 
+    #     for (idx_1, idx_2), dist in shortest_path_dict.items():
+    #         dist_mat[idx_1, idx_2] = dist
+    #         dist_mat[idx_2, idx_1] = dist
         
-        return sim_data_points_dict, shortest_path_dict
+    #     return dist_mat

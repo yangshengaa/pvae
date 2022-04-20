@@ -153,10 +153,11 @@ args.prior_iso = args.prior_iso or args.posterior == 'RiemannianNormal'
 modelC = getattr(models, 'Enc_{}'.format(args.model))
 model = modelC(args).to(device)
 optimizer = optim.Adam(model.parameters(), lr=args.lr, amsgrad=True, betas=(args.beta1, args.beta2))
-train_loader, test_loader, overall_loader, shortest_path_dict = model.getDataLoaders(
+overall_loader, shortest_path_dict, shortest_path_mat = model.getDataLoaders(
     args.batch_size, True, device, *args.data_params
 )
 loss_function = ae_pairwise_dist_objective # getattr(objectives, args.obj + '_objective')
+shortest_path_mat = shortest_path_mat.to(device)
 
 # parameters for ae objectives 
 use_hyperbolic = args.use_hyperbolic
@@ -170,7 +171,7 @@ def train(epoch, agg):
         labels = labels.to(device)
         optimizer.zero_grad()
         loss, train_distortion = loss_function(
-            model, data, labels, shortest_path_dict, 
+            model, data, shortest_path_mat, 
             use_hyperbolic=use_hyperbolic, c=curvature
         )
         probe_infnan(loss, "Training loss:")
@@ -180,10 +181,10 @@ def train(epoch, agg):
         b_loss += loss.item()
 
     # agg['train_loss'].append(b_loss)
-    agg['distortion'] = train_distortion
-    agg['train_loss'] = b_loss
+    agg['distortion'].append(train_distortion)
+    agg['train_loss'].append(b_loss)
     if epoch % 1 == 0:
-        print(f'====> Epoch: {epoch:03d} Train Loss: {b_loss:.2f}, Train Distortion: {train_distortion:.2f}')
+        print(f'====> Epoch: {epoch:03d} Train Loss: {b_loss:.4f}, Train Distortion: {train_distortion:.2f}')
 
 
 # def test(epoch, agg):
@@ -216,11 +217,29 @@ def train(epoch, agg):
 #     agg['overall_loss'].append(overall_loss)
 #     print(f'Overall loss: {overall_loss:2f}, Overall Distortion: {overall_distortion:.2f}')
 
+def record_info(agg):
+    """ record loss and distortion """
+    basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},'
+    main_report = basic_params + f'{agg["train_loss"][-1]:.4f},{agg["distortion"][-1]:.3f}'
+    loss_report = basic_params + ','.join([f"{agg['train_loss'][i]:.4f}" for i in range(len(agg['train_loss']))])
+    distortion_report = basic_params + ','.join([f"{agg['distortion'][i]:.3f}" for i in range(len(agg['distortion']))])
 
+    # write to file 
+    sim_record_path = 'experiments'
+    with open(os.path.join(sim_record_path, 'sim_records.txt'), 'a') as f:
+        f.write(main_report)
+        f.write('\n')
+    with open(os.path.join(sim_record_path, 'sim_loss.txt'), 'a') as f:
+        f.write(loss_report)
+        f.write('\n')
+    with open(os.path.join(sim_record_path, 'sim_distortion.txt'), 'a') as f:
+        f.write(distortion_report)
+        f.write('\n')
+ 
 if __name__ == '__main__':
     with Timer('ME-VAE') as t:
         # agg = defaultdict(list)
-        agg = defaultdict(int)
+        agg = defaultdict(list)
         print('Starting training...')
 
         # model.init_last_layer_bias(train_loader)
@@ -235,7 +254,4 @@ if __name__ == '__main__':
         # eval_overall(agg)
 
         # record simulation results
-        sim_record_path = 'experiments/sim_records.txt'
-        with open(sim_record_path, 'a') as f:
-            f.write(f'{args.data_params[0]}, {args.data_size[0]}, {args.latent_dim}, {args.enc}, {args.use_hyperbolic}, {args.c}, {agg["train_loss"]}, {agg["distortion"]}')
-            f.write('\n')
+        record_info(agg)

@@ -151,10 +151,10 @@ class SimTreeDistortionFromFile(TabularEnc):
         kwargs = {'num_workers': 1, 'pin_memory': True} if device == "cuda" else {}
         print('Load training data...')
         dataset = SyntheticTreeDistortionDataSetFromFile(*args)
-        n_train, n_test = _validate_shuffle_split(len(dataset), test_size=None, train_size=0.7)
-        train_dataset, test_dataset = torch.utils.data.random_split(dataset, [n_train, n_test])
+        # n_train, n_test = _validate_shuffle_split(len(dataset), test_size=None, train_size=0.7)
+        # train_dataset, test_dataset = torch.utils.data.random_split(dataset, [n_train, n_test])
         # full batch training to account for pairwise comparison 
-        train_loader = DataLoader(train_dataset, batch_size=len(train_dataset), drop_last=False, shuffle=shuffle, **kwargs)
-        test_loader = DataLoader(test_dataset, batch_size=len(test_dataset), drop_last=False, shuffle=False, **kwargs)
+        # train_loader = DataLoader(train_dataset, batch_size=len(train_dataset), drop_last=False, shuffle=shuffle, **kwargs)
+        # test_loader = DataLoader(test_dataset, batch_size=len(test_dataset), drop_last=False, shuffle=False, **kwargs)
         overall_loader = DataLoader(dataset, batch_size=len(dataset), drop_last=False, shuffle=False, **kwargs)  # for overall distortion
-        return train_loader, test_loader, overall_loader, dataset.shortest_path_dict
+        return overall_loader, dataset.shortest_path_dict, dataset.shortest_path_mat

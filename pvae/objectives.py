@@ -49,78 +49,73 @@ def iwae_objective(model, x, K):
     return obj
 
 # ============ for simulation only =============
-def _hyperbolic_distance(z, y, c=1, thr=0.9):
+
+def _euclidean_pairwise_dist(data_mat):
     """ 
-    helper function to compute the hyperbolic distance 
-
-    :param thr: threshold for numerical stability
+    compute the pairwise euclidean distance matrix 
+    || x - y || ^ 2 = || x || ^ 2 - 2 < x, y > + || y || ^ 2
+    
+    :param data_mat: of N by D 
+    :return dist_mat: of N by N 
     """
-    z_norm = torch.linalg.norm(z)
-    y_norm = torch.linalg.norm(y)
+    data_norm_squared = torch.linalg.norm(data_mat, dim=1, keepdim=True) ** 2
+    data_inner_prod = data_mat @ data_mat.T 
+    template = torch.ones_like(data_inner_prod)  # keep dim 
 
+    dist_mat_squared = data_norm_squared * template + data_norm_squared.T * template - 2 * data_inner_prod
+    dist_mat = torch.sqrt(torch.clamp(dist_mat_squared, min=Constants.eta))  # for numerical stability
+    return dist_mat
+
+def _hyperbolic_pairwise_dist(data_mat, c=1, thr=0.9):
+    """ compute pairwise hyperbolic distance """
     # hard threshold: https://doi.org/10.48550/arXiv.2107.11472
-    z = z * thr / z_norm if z_norm > thr else z
-    y = y * thr / y_norm if y_norm > thr else y
+    data_mat_rescaled = data_mat * torch.clamp(thr / torch.linalg.norm(data_mat, dim=1, keepdim=True), max=1)
+    data_mat_rescaled_norm = torch.linalg.norm(data_mat_rescaled, dim=1, keepdim=True)
+    euclidean_dist_mat = _euclidean_pairwise_dist(data_mat_rescaled)
+    denom = (1 - c * data_mat_rescaled_norm ** 2) @ (1 - c * data_mat_rescaled_norm ** 2).T
 
-    # distance
-    dist = 1 / torch.sqrt(c) * torch.arccosh(
-        1 + 2 * c * torch.linalg.norm(z - y) ** 2 / ( 
-            (1 - c * z_norm ** 2) * (1 - c * y_norm ** 2)  
-        )
+    dist_mat = 1 / torch.sqrt(c) * torch.arccosh(
+        1 + 2 * c * euclidean_dist_mat ** 2 / denom
     )
-    return dist
 
+    return dist_mat
+    
 def _distortion_rate(emb_dists, real_dists):
-    """ compute the distortion rate from embedding distances and real distances """
+    """ compute distortion rate """ 
     with torch.no_grad():
-        contractions = real_dists / emb_dists
-        expansions = emb_dists / real_dists
+        N = emb_dists.shape[0]
+        emb_dists_shift = emb_dists + torch.eye(N) 
+        real_dists_shift = real_dists + torch.eye(N)
+
+        contractions = real_dists_shift / (emb_dists_shift + Constants.eta)
+        expansions = emb_dists_shift / (real_dists_shift + Constants.eta)
         contraction = torch.max(contractions)
         expansion = torch.max(expansions)
         distortion = contraction * expansion
         return distortion
 
-def ae_pairwise_dist_objective(model, data, labels, shortest_path_dict, use_hyperbolic=False, c=1):
+
+def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=False, c=1):
     """
     minimize regression MSE (equally weighted) on the estimated pairwise distance. The output distance is 
     either measured in Euclidean or in hyperbolic sense
 
+    assume that the data comes in the original sequence (shuffle = False)
+
     :param c: the curvature, if use_hyperbolic is true 
     """
+    # reconstruct
     reconstructed_data = model(data).squeeze()
-    loss = 0
 
-    # determine distance function 
-    if use_hyperbolic:
-        dist_f = partial(_hyperbolic_distance, c=c)
+    # select loss function
+    if use_hyperbolic: 
+        emb_dists = _hyperbolic_pairwise_dist(reconstructed_data, c=c)
     else:
-        dist_f = lambda x1, x2: torch.linalg.norm(x1 - x2)
+        emb_dists = _euclidean_pairwise_dist(reconstructed_data)
+
+    loss = torch.mean((emb_dists - shortest_path_mat) ** 2)
     
-    # compute pairwise dist MSE
-    emb_dists, real_dists = [], []
-    for i in range(len(reconstructed_data) - 1):
-        reconstructed_data_1 = reconstructed_data[i]
-        label_1 = labels[i].item()
-        for j in range(i + 1, len(reconstructed_data)):
-            reconstructed_data_2 = reconstructed_data[j]
-            label_2 = labels[j].item()
-
-            cur_dist = dist_f(reconstructed_data_1, reconstructed_data_2)
-            real_dist = shortest_path_dict[(min(label_1, label_2), max(label_1, label_2))]
-
-            # compute loss 
-            loss += (cur_dist - real_dist) ** 2
-
-            # record dist for distortion 
-            emb_dists.append(cur_dist)
-            real_dists.append(real_dist)
-
-    # normalize loss 
-    loss /= (len(data) * (len(data) - 1))
-
     # compute distortion 
-    emb_dists = torch.Tensor(emb_dists)
-    real_dists = torch.Tensor(real_dists)
-    distortion_rate = _distortion_rate(emb_dists, real_dists)
+    distortion_rate = _distortion_rate(emb_dists, shortest_path_mat)
 
     return loss, distortion_rate

@@ -55,8 +55,16 @@ python3 pvae/main.py --model csv --data-param CSV_NAME --data-size NB_FEATURES
 
 ## Run Custom Simulation (Notes from Sheng Yang)
 
-To simulate, use
+To create new data set and simulate, use
 
 ```bash
 python3 pvae/main_sim_distortion.py --model simtree --manifold PoincareBall --latent-dim 2 --hidden-dim 200 --c 1.2 --data-size 10 --data-params 8 100 5 --dec Wrapped --enc Wrapped  --epochs 500 --lr 1e-3
 ```
+
+To use predefined dataset, use
+
+```python
+python3 pvae/main_sim_distortion.py --model simtreefile --manifold PoincareBall --latent-dim 2 --hidden-dim 100 --c 1 --data-size 2 --data-params sim_tree_1 --enc WrappedAlt --epochs 1000 --lr 1e-3
+```
+
+where ```sim_tree_1``` is the folder name of the dataset.

@@ -92,7 +92,7 @@ parser.add_argument('--output-dim', type=int, default=None,
                     help='output dimension, just for distortion simulation (if None, output = input)')
 parser.add_argument('--nl', type=str, default='ReLU', help='non linearity')
 parser.add_argument('--enc', type=str, default='Wrapped', help='allow to choose different implemented encoder',
-                    choices=['Linear', 'Wrapped', 'Mob'])
+                    choices=['Linear', 'Wrapped', 'WrappedAlt', 'Mob'])
 parser.add_argument('--dec', type=str, default='Wrapped', help='allow to choose different implemented decoder',
                     choices=['Linear', 'Wrapped', 'Geo', 'Mob', 'LinearSim', 'WrappedSim', 'GeoSim', 'MobSim'])
 
@@ -235,6 +235,17 @@ def record_info(agg):
     with open(os.path.join(sim_record_path, 'sim_distortion.txt'), 'a') as f:
         f.write(distortion_report)
         f.write('\n')
+    
+    # for testing only
+    # with open(os.path.join(sim_record_path, 'temp_sim_records.txt'), 'a') as f:
+    #     f.write(main_report)
+    #     f.write('\n')
+    # with open(os.path.join(sim_record_path, 'temp_sim_loss.txt'), 'a') as f:
+    #     f.write(loss_report)
+    #     f.write('\n')
+    # with open(os.path.join(sim_record_path, 'temp_sim_distortion.txt'), 'a') as f:
+    #     f.write(distortion_report)
+    #     f.write('\n')
  
 if __name__ == '__main__':
     with Timer('ME-VAE') as t:

@@ -28,6 +28,9 @@ class Euclidean(EuclideanParent):
 
     def expmap0(self, u):
         return u
+    
+    def direct_map(self, u):
+        return u 
 
     def logmap0(self, u):
         return u

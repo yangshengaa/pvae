@@ -65,6 +65,13 @@ class PoincareBall(PoincareBallParent):
 
         # TODO: suggestion from Zhengchao: try <log_p x, w> 
 
+    def direct_map(self, x):
+        """ 
+        a direct map to within the circle, suggested by Zhengchao 
+        from arXiv:2006.08210, equation 7 
+        """
+        mapped_x = x / (1 + torch.sqrt(1 + self.c * torch.linalg.norm(x) ** 2))
+        return mapped_x
 
 
 class PoincareBallExact(PoincareBall):

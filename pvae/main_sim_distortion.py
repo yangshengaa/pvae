@@ -111,6 +111,13 @@ parser.add_argument('--no-cuda', action='store_true',
 parser.add_argument('--seed', type=int, default=0,
                     metavar='S', help='random seed (default: 1)')
 
+### model save 
+parser.add_argument('--save-model-emb', default=False, 
+                    help='whether to save the trained embeddings', type=bool)
+
+### model metric report 
+parser.add_argument('--report-model', default=True, help='whether to save model metrics', type=bool)
+
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 device = torch.device("cuda" if args.cuda else "cpu")
@@ -217,6 +224,19 @@ def train(epoch, agg):
 #     agg['overall_loss'].append(overall_loss)
 #     print(f'Overall loss: {overall_loss:2f}, Overall Distortion: {overall_distortion:.2f}')
 
+def save_emb():
+    """ save final embeddings """
+    with torch.no_grad():
+        for _, (data, _) in enumerate(overall_loader):
+            data_emb = model(data).squeeze()
+        data_emb_np = data_emb.numpy()
+        
+        # save 
+        save_path = 'experiments'
+        model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c}'
+        with open(os.path.join(save_path, model_params + '_data_emb.npy'), 'wb') as f:
+            np.save(f, data_emb_np)
+
 def record_info(agg):
     """ record loss and distortion """
     basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},'
@@ -246,8 +266,9 @@ def record_info(agg):
     # with open(os.path.join(sim_record_path, 'temp_sim_distortion.txt'), 'a') as f:
     #     f.write(distortion_report)
     #     f.write('\n')
- 
-if __name__ == '__main__':
+
+def main():
+    """ main running """
     with Timer('ME-VAE') as t:
         # agg = defaultdict(list)
         agg = defaultdict(list)
@@ -264,5 +285,13 @@ if __name__ == '__main__':
             # save_vars(agg, runPath + '/losses.rar')
         # eval_overall(agg)
 
+        # save embeddings 
+        if args.save_model_emb:
+            save_emb()
+        
         # record simulation results
-        record_info(agg)
+        if args.report_model:
+            record_info(agg)
+ 
+if __name__ == '__main__':
+    main()

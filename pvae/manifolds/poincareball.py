@@ -70,7 +70,7 @@ class PoincareBall(PoincareBallParent):
         a direct map to within the circle, suggested by Zhengchao 
         from arXiv:2006.08210, equation 7 
         """
-        mapped_x = x / (1 + torch.sqrt(1 + self.c * torch.linalg.norm(x) ** 2))
+        mapped_x = x / (1 + torch.sqrt(1 + self.c * torch.linalg.norm(x, dim=1, keepdim=True) ** 2))
         return mapped_x
 
 

@@ -2,7 +2,6 @@
 for simulation to test distortion only, copy from main with minor modifications
 """
 
-from email.policy import default
 import sys
 sys.path.append(".")
 sys.path.append("..")
@@ -73,8 +72,10 @@ parser.add_argument('--beta', type=float, default=1.0,
                     metavar='B', help='coefficient of beta-VAE (default: 1.0)')
 parser.add_argument('--analytical-kl', action='store_true',
                     default=False, help='analytical kl when possible')
-parser.add_argument('--use-hyperbolic', help='whether to use hyperbolic distance for outputs', 
-                    default=False, type=bool)
+parser.add_argument('--use-hyperbolic', help='whether to use hyperbolic distance for outputs, default=True', 
+                    default=True, type=bool)
+parser.add_argument('--loss-function', help='type of loss function', default='scaled', type=str, 
+                    choices=['raw', 'relative', 'scaled'])
 
 ### Model
 parser.add_argument('--latent-dim', type=int, default=10,
@@ -135,27 +136,6 @@ args.prior_iso = args.prior_iso or args.posterior == 'RiemannianNormal'
 
 # * disable model saving for now 
 
-# # Create directory for experiment if necessary
-# directory_name = 'experiments/{}'.format(args.name)
-# if args.name != '.':
-#     if not os.path.exists(directory_name):
-#         os.makedirs(directory_name)
-#     runPath = mkdtemp(prefix=runId, dir=directory_name)
-# else:
-#     runPath = mkdtemp(prefix=runId, dir=directory_name)
-# sys.stdout = Logger('{}/run.log'.format(runPath))
-# print('RunID:', runId)
-
-# # Save args to run
-# with open('{}/args.json'.format(runPath), 'w') as fp:
-#     json.dump(args.__dict__, fp)
-# with open('{}/args.txt'.format(runPath), 'w') as fp:
-#     git_hash = subprocess.check_output(
-#         ['git', 'rev-parse', '--verify', 'HEAD'])
-#     command = ' '.join(sys.argv[1:])
-#     fp.write(git_hash.decode('utf-8') + command)
-# torch.save(args, '{}/args.rar'.format(runPath))
-
 # Initialise model, optimizer, dataset loader and loss function
 modelC = getattr(models, 'Enc_{}'.format(args.model))
 model = modelC(args).to(device)
@@ -169,6 +149,8 @@ shortest_path_mat = shortest_path_mat.to(device)
 # parameters for ae objectives 
 use_hyperbolic = args.use_hyperbolic
 curvature = torch.Tensor([args.c]).to(device)
+loss_function_type = args.loss_function
+
 
 def train(epoch, agg):
     model.train()
@@ -177,9 +159,10 @@ def train(epoch, agg):
         data = data.to(device)
         labels = labels.to(device)
         optimizer.zero_grad()
-        loss, train_distortion = loss_function(
+        loss, train_distortion, train_max_distortion = loss_function(
             model, data, shortest_path_mat, 
-            use_hyperbolic=use_hyperbolic, c=curvature
+            use_hyperbolic=use_hyperbolic, c=curvature,
+            loss_function_type=loss_function_type
         )
         probe_infnan(loss, "Training loss:")
         loss.backward()
@@ -189,40 +172,11 @@ def train(epoch, agg):
 
     # agg['train_loss'].append(b_loss)
     agg['distortion'].append(train_distortion)
+    agg['max_distortion'].append(train_max_distortion)
     agg['train_loss'].append(b_loss)
     if epoch % 1 == 0:
-        print(f'====> Epoch: {epoch:03d} Train Loss: {b_loss:.4f}, Train Distortion: {train_distortion:.2f}')
+        print(f'====> Epoch: {epoch:03d} Loss: {b_loss:.4f}, Distortion: {train_distortion:.4f}, Max Distortion {train_max_distortion:.2f}')
 
-
-# def test(epoch, agg):
-#     model.eval()
-#     b_loss = 0. 
-#     with torch.no_grad():
-#         for _, (data, labels) in enumerate(test_loader):
-#             data = data.to(device)
-#             labels = labels.to(device)
-#             loss, test_distortion = loss_function(
-#                 model, data, labels, shortest_path_dict, 
-#                 use_hyperbolic=use_hyperbolic, c=curvature
-#             )
-
-#             b_loss += loss.item()
-
-#     agg['test_loss'].append(b_loss)
-#     print('Test loss: {:.4f}, Test Distortion: {:.2f}'.format(agg['test_loss'][-1], test_distortion))
-
-
-# def eval_overall(agg):
-#     with torch.no_grad():
-#         for _, (data, labels) in enumerate(overall_loader):  # gauranteed full batch, run once
-#             data = data.to(device)
-#             labels = labels.to(device)
-#             overall_loss, overall_distortion = loss_function(
-#                 model, data, labels, shortest_path_dict,
-#                 use_hyperbolic=use_hyperbolic, c=curvature
-#             )
-#     agg['overall_loss'].append(overall_loss)
-#     print(f'Overall loss: {overall_loss:2f}, Overall Distortion: {overall_distortion:.2f}')
 
 def save_emb():
     """ save final embeddings """
@@ -233,16 +187,17 @@ def save_emb():
         
         # save 
         save_path = 'experiments'
-        model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c}'
+        model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function}'
         with open(os.path.join(save_path, model_params + '_data_emb.npy'), 'wb') as f:
             np.save(f, data_emb_np)
 
 def record_info(agg):
     """ record loss and distortion """
-    basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},'
+    basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},'
     main_report = basic_params + f'{agg["train_loss"][-1]:.4f},{agg["distortion"][-1]:.3f}'
     loss_report = basic_params + ','.join([f"{agg['train_loss'][i]:.4f}" for i in range(len(agg['train_loss']))])
-    distortion_report = basic_params + ','.join([f"{agg['distortion'][i]:.3f}" for i in range(len(agg['distortion']))])
+    distortion_report = basic_params + ','.join([f"{agg['distortion'][i]:.5f}" for i in range(len(agg['distortion']))])
+    max_distortion_report = basic_params + ','.join([f"{agg['max_distortion'][i]:.5f}" for i in range(len(agg['max_distortion']))])
 
     # write to file 
     sim_record_path = 'experiments'
@@ -254,6 +209,9 @@ def record_info(agg):
         f.write('\n')
     with open(os.path.join(sim_record_path, 'sim_distortion.txt'), 'a') as f:
         f.write(distortion_report)
+        f.write('\n')
+    with open(os.path.join(sim_record_path, 'sim_max_distortion.txt'), 'a') as f:
+        f.write(max_distortion_report)
         f.write('\n')
     
     # for testing only
@@ -277,13 +235,6 @@ def main():
         # model.init_last_layer_bias(train_loader)
         for epoch in range(1, args.epochs + 1):
             train(epoch, agg)
-            # print(epoch)
-            # if args.save_freq == 0 or epoch % args.save_freq == 0:
-            #     if not args.skip_test:
-            #         test(epoch, agg)
-            # save_model(model, runPath + '/model.rar')
-            # save_vars(agg, runPath + '/losses.rar')
-        # eval_overall(agg)
 
         # save embeddings 
         if args.save_model_emb:

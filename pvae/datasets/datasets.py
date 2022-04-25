@@ -152,6 +152,9 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
     :param num_start_points: number of starting points to connect 
     :param num_points: the number of points to generate at the end 
     :param k: number of neighbors for connection
+    :param centroids: the starting centroids to start with. If none, generate from raw
+    :param is_noiseless: True if the generated tree data is noiseless 
+    :param noise_level: a scalar controling the noise level 
     :return two dictionaries: 
         - Dict[idx, np.array] recording the original data points and 
         - Dict[(idx, idx), int] recording the shortest path distance 
@@ -162,15 +165,21 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
         n: int,
         num_start_points: int = 6,
         num_points: int = 500,
-        k: int=5
+        k: int=5,
+        centroids: np.ndarray=None,
+        is_noiseless: bool=False,
+        noise_level: float=1.
     ) -> None:
         self.n = n
         self.num_start_points = num_start_points
         self.num_points = num_points
         self.k = k
+        self.centroids = centroids 
+        self.is_noiseless = is_noiseless
+        self.noise_level = noise_level
 
         # construct tree 
-        self.sim_data_points_dict, self.shortest_path_dict = self.make_tree_data()
+        self.sim_data_points_dict, self.shortest_path_dict, self.dist_mat = self.make_tree_data()
 
         # unpack 
         label_data_tuple = list(self.sim_data_points_dict.items())
@@ -215,9 +224,13 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
     def make_tree_data(self):
         """ construct tree like data """
         # randomly create starting points from within a unit cube 
-        start_points_array = np.random.uniform(
-            low=-1, high=1, size=(self.num_start_points, self.n)
-        )
+        if self.centroids is None: 
+            start_points_array = np.random.uniform(
+                low=-1, high=1, size=(self.num_start_points, self.n)
+            )
+            self.centroids = start_points_array  # for manual examination only
+        else:
+            start_points_array = self.centroids
         # start_points_array = np.array([
         #     [0, 1/3],
         #     [0, -1/3],
@@ -226,7 +239,7 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
         #     [-0.5, 0.75],
         #     [-0.5, -0.75]
         # ])  # temporary!  for specific generation only 
-        self.centroids = start_points_array  # for manual examination only
+        
 
         start_points_array_dict = dict(zip(range(start_points_array.shape[0]), start_points_array))
 
@@ -234,8 +247,12 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
         edges = self.kruskal(start_points_array_dict)
 
         # generate noise
-        scale = abs(np.min(np.max(start_points_array, axis=0))) / 10  # ! tune it
-        gaussian_noise = np.random.normal(scale=scale, size=(self.num_points, self.n))
+        if self.is_noiseless:
+            scale = 0
+            gaussian_noise = np.zeros((self.num_points, self.n))
+        else:
+            scale = self.noise_level * abs(np.min(np.max(start_points_array, axis=0))) / 10 / self.n  # larger dimension, smaller noise 
+            gaussian_noise = np.random.normal(scale=scale, size=(self.num_points, self.n))
 
         # select edges and select branching point
         num_points_per_edge = self.num_points // len(edges)
@@ -279,11 +296,16 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
             cur_dist = np.linalg.norm(data_1 - data_2)
             g.edges[idx_1, idx_2]['dist'] = cur_dist  # passed in as attributes
 
+        # create shortest path dict and dist matrix 
+        dist_mat = torch.zeros(self.num_points, self.num_points, requires_grad=False)
         for idx_1, idx_2 in sim_data_indices:
             cur_shortest_dist = nx.shortest_path_length(g, idx_1, idx_2, weight='dist')
             shortest_path_dict[(idx_1, idx_2)] = torch.tensor(cur_shortest_dist)
-        # TODO: save matrix as well
-        return sim_data_points_dict, shortest_path_dict
+
+            dist_mat[idx_1, idx_2] = cur_shortest_dist
+            dist_mat[idx_2, idx_1] = cur_shortest_dist
+        
+        return sim_data_points_dict, shortest_path_dict, dist_mat
 
 
 class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):

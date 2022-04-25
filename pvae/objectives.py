@@ -8,8 +8,6 @@ import torch.nn.functional as F
 
 from pvae.utils import has_analytic_kl, log_mean_exp, Constants
 
-# cuda specification
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def vae_objective(model, x, K=1, beta=1.0, components=False, analytical_kl=False, **kwargs):
     """Computes E_{p(x)}[ELBO] """
@@ -53,6 +51,7 @@ def iwae_objective(model, x, K):
 
 # ============ for simulation only =============
 
+# metics 
 def _euclidean_pairwise_dist(data_mat):
     """ 
     compute the pairwise euclidean distance matrix 
@@ -82,23 +81,62 @@ def _hyperbolic_pairwise_dist(data_mat, c=1, thr=0.9):
     )
 
     return dist_mat
-    
-def _distortion_rate(emb_dists, real_dists):
-    """ compute distortion rate """ 
-    with torch.no_grad():
-        N = emb_dists.shape[0]
-        emb_dists_shift = emb_dists + torch.eye(N).to(device) 
-        real_dists_shift = real_dists + torch.eye(N).to(device)
 
-        contractions = real_dists_shift / (emb_dists_shift + Constants.eta)
-        expansions = emb_dists_shift / (real_dists_shift + Constants.eta)
-        contraction = torch.max(contractions)
-        expansion = torch.max(expansions)
+# loss functions 
+def _select_upper_triangular(emb_dists, real_dists):
+    """ select the upper triangular portion of the distance matrix """
+    mask = torch.triu(torch.ones_like(real_dists), diagonal=1) > 0
+    emb_dists_selected = torch.masked_select(emb_dists, mask)
+    real_dists_selected = torch.masked_select(real_dists, mask)
+    return emb_dists_selected, real_dists_selected
+
+def _pairwise_dist_loss(emb_dists_selected, real_dists_selected):
+    """ equally weighted pairwise loss """
+    loss = torch.mean((emb_dists_selected - real_dists_selected) ** 2)
+    return loss 
+
+def _relative_pairwise_dist_loss(emb_dists_selected, real_dists_selected):
+    """ 
+    relative distance pairwise loss, given by 
+    ((d_e - d_r) / d_r) ** 2
+    """ 
+    loss = torch.mean((emb_dists_selected / real_dists_selected - 1) ** 2)
+    return loss 
+
+def _scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected):
+    """ 
+    scaled version that is more presumably more compatible with optimizing distortion 
+    (d_e / mean(d_e) - d_r / mean(d_r)) ** 2
+    """
+    loss = torch.mean(
+        ((emb_dists_selected / emb_dists_selected.mean()) - (real_dists_selected / real_dists_selected.mean())) ** 2
+    )
+    return loss
+
+# distortion evaluations 
+def _max_distortion_rate(emb_dists_selected, real_dists_selected):
+    """ compute max distortion rate """ 
+    with torch.no_grad():
+        contractions = real_dists_selected / (emb_dists_selected + Constants.eta)
+        expansions = emb_dists_selected / (real_dists_selected + Constants.eta)
+        contraction = torch.max(contractions)       # max 
+        expansion = torch.max(expansions)           # max 
         distortion = contraction * expansion
         return distortion
 
 
-def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=False, c=1):
+def _distortion_rate(emb_dists_selected, real_dists_selected):
+    """ compute 'average' distortion rate """
+    with torch.no_grad():
+        contractions = real_dists_selected / (emb_dists_selected + Constants.eta)
+        expansions = emb_dists_selected / (real_dists_selected + Constants.eta)
+        contraction = torch.mean(contractions)      # mean 
+        expansion = torch.mean(expansions)          # mean 
+        distortion = contraction * expansion
+        return distortion
+
+
+def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=False, loss_function_type='scaled', c=1):
     """
     minimize regression MSE (equally weighted) on the estimated pairwise distance. The output distance is 
     either measured in Euclidean or in hyperbolic sense
@@ -106,19 +144,32 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
     assume that the data comes in the original sequence (shuffle = False)
 
     :param c: the curvature, if use_hyperbolic is true 
+    :param loss_function_type: raw for the normal one, relative for relative dist, scaled for scaled
     """
     # reconstruct
     reconstructed_data = model(data).squeeze()
 
-    # select loss function
+    # select distance 
     if use_hyperbolic: 
         emb_dists = _hyperbolic_pairwise_dist(reconstructed_data, c=c)
     else:
         emb_dists = _euclidean_pairwise_dist(reconstructed_data)
+    
+    # select upper triangular portion 
+    emb_dists_selected, real_dists_selected = _select_upper_triangular(emb_dists, shortest_path_mat)
 
-    loss = torch.mean((emb_dists - shortest_path_mat) ** 2)
+    # select loss function 
+    if loss_function_type == 'raw':
+        loss = _pairwise_dist_loss(emb_dists_selected, real_dists_selected)
+    elif loss_function_type == 'relative':
+        loss = _relative_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
+    elif loss_function_type == 'scaled':
+        loss = _scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
+    else:
+        raise NotImplementedError(f'loss function type {loss_function_type} not available')
     
     # compute distortion 
-    distortion_rate = _distortion_rate(emb_dists, shortest_path_mat)
+    distortion_rate = _distortion_rate(emb_dists_selected, real_dists_selected)
+    max_distortion_rate = _max_distortion_rate(emb_dists_selected, real_dists_selected)
 
-    return loss, distortion_rate
+    return loss, distortion_rate, max_distortion_rate

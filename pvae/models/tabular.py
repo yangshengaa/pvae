@@ -157,4 +157,5 @@ class SimTreeDistortionFromFile(TabularEnc):
         # train_loader = DataLoader(train_dataset, batch_size=len(train_dataset), drop_last=False, shuffle=shuffle, **kwargs)
         # test_loader = DataLoader(test_dataset, batch_size=len(test_dataset), drop_last=False, shuffle=False, **kwargs)
         overall_loader = DataLoader(dataset, batch_size=len(dataset), drop_last=False, shuffle=False, **kwargs)  # for overall distortion
-        return overall_loader, dataset.shortest_path_dict, dataset.shortest_path_mat
+        # return overall_loader, dataset.shortest_path_dict, dataset.shortest_path_mat
+        return overall_loader, dataset.shortest_path_mat

@@ -117,7 +117,8 @@ parser.add_argument('--save-model-emb', default=False,
                     help='whether to save the trained embeddings', type=bool)
 
 ### model metric report 
-parser.add_argument('--report-model', default=True, help='whether to save model metrics', type=bool)
+parser.add_argument('--save-model-report', default=True, 
+                    help='whether to save model metrics')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -140,7 +141,10 @@ args.prior_iso = args.prior_iso or args.posterior == 'RiemannianNormal'
 modelC = getattr(models, 'Enc_{}'.format(args.model))
 model = modelC(args).to(device)
 optimizer = optim.Adam(model.parameters(), lr=args.lr, amsgrad=True, betas=(args.beta1, args.beta2))
-overall_loader, shortest_path_dict, shortest_path_mat = model.getDataLoaders(
+# overall_loader, shortest_path_dict, shortest_path_mat = model.getDataLoaders(
+#     args.batch_size, True, device, *args.data_params
+# )
+overall_loader, shortest_path_mat = model.getDataLoaders(
     args.batch_size, True, device, *args.data_params
 )
 loss_function = ae_pairwise_dist_objective # getattr(objectives, args.obj + '_objective')
@@ -194,7 +198,7 @@ def save_emb():
 def record_info(agg):
     """ record loss and distortion """
     basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},'
-    main_report = basic_params + f'{agg["train_loss"][-1]:.4f},{agg["distortion"][-1]:.3f}'
+    main_report = basic_params + f'{agg["train_loss"][-1]:.4f},{agg["distortion"][-1]:.3f},{agg["max_distortion"][-1]:.3f}'
     loss_report = basic_params + ','.join([f"{agg['train_loss'][i]:.4f}" for i in range(len(agg['train_loss']))])
     distortion_report = basic_params + ','.join([f"{agg['distortion'][i]:.5f}" for i in range(len(agg['distortion']))])
     max_distortion_report = basic_params + ','.join([f"{agg['max_distortion'][i]:.5f}" for i in range(len(agg['max_distortion']))])
@@ -232,7 +236,6 @@ def main():
         agg = defaultdict(list)
         print('Starting training...')
 
-        # model.init_last_layer_bias(train_loader)
         for epoch in range(1, args.epochs + 1):
             train(epoch, agg)
 
@@ -241,7 +244,7 @@ def main():
             save_emb()
         
         # record simulation results
-        if args.report_model:
+        if (args.save_model_report):
             record_info(agg)
  
 if __name__ == '__main__':

@@ -300,3 +300,5 @@ venv.bak/
 # simulation commands 
 simulation*
 archive/
+pvae/make_sim_data.py
+report/

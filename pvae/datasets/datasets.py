@@ -317,14 +317,16 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
         self.path = folder_name
 
         # construct tree 
-        self.sim_data_points_dict, self.shortest_path_dict, self.shortest_path_mat = self.read_tree_data()
+        # self.sim_data_points_dict, self.shortest_path_dict, self.shortest_path_mat = self.read_tree_data()
+        self.sim_data_points, self.shortest_path_mat = self.read_tree_data()
         # self.shortest_path_mat = self.convert_shortest_path_dict_to_matrix(self.shortest_path_dict)
 
         # unpack 
-        label_data_tuple = list(self.sim_data_points_dict.items())
-        self.data = np.vstack([x[1] for x in label_data_tuple])
-        self.labels = np.array([[x[0] for x in label_data_tuple]]).T
-        
+        # label_data_tuple = list(self.sim_data_points_dict.items())
+        # self.data = np.vstack([x[1] for x in label_data_tuple])
+        # self.labels = np.array([[x[0] for x in label_data_tuple]]).T
+        self.data = self.sim_data_points
+        self.labels = np.array([range(len(self.data))]).T
 
     def __len__(self):
         return len(self.data)
@@ -337,22 +339,27 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
     # ----- util ------
     def read_tree_data(self):
         """read from file"""
-        with open(os.path.join('data', self.path, 'sim_tree_dict.pkl'), 'rb') as f:
-            dicts = pickle.load(f)
+        # with open(os.path.join('data', self.path, 'sim_tree_dict.pkl'), 'rb') as f:
+        #     dicts = pickle.load(f)
         
-        sim_data_points_dict = dicts['sim_data_points_dict']
-        shortest_path_dict = dicts['shortest_path_dict']
+        # sim_data_points_dict = dicts['sim_data_points_dict']
+        # shortest_path_dict = dicts['shortest_path_dict']
 
-        # convert to tensor distance 
-        for key, value in shortest_path_dict.items():
-            shortest_path_dict[key] = torch.tensor(value)
+        # # convert to tensor distance 
+        # for key, value in shortest_path_dict.items():
+        #     shortest_path_dict[key] = torch.tensor(value)
 
+        # read data points 
+        with open(os.path.join('data', self.path, 'sim_tree_points.npy'), 'rb') as f:
+            sim_data_points = np.load(f)
+        
         # read mat 
         with open(os.path.join('data', self.path, 'sim_tree_dist_mat.npy'), 'rb') as f:
             shortest_path_mat = np.load(f)
         shortest_path_mat = torch.Tensor(shortest_path_mat)
 
-        return sim_data_points_dict, shortest_path_dict, shortest_path_mat
+        # return sim_data_points_dict, shortest_path_dict, shortest_path_mat
+        return sim_data_points, shortest_path_mat
 
     # def convert_shortest_path_dict_to_matrix(self, shortest_path_dict):
     #     """ convert dictionary into a symmetric matrix """

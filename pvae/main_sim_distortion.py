@@ -75,7 +75,7 @@ parser.add_argument('--analytical-kl', action='store_true',
 parser.add_argument('--use-hyperbolic', help='whether to use hyperbolic distance for outputs, default=True', 
                     default=True, type=bool)
 parser.add_argument('--loss-function', help='type of loss function', default='scaled', type=str, 
-                    choices=['raw', 'relative', 'scaled'])
+                    choices=['raw', 'relative', 'scaled', 'distortion'])
 
 ### Model
 parser.add_argument('--latent-dim', type=int, default=10,
@@ -178,7 +178,7 @@ def train(epoch, agg):
     agg['distortion'].append(train_distortion)
     agg['max_distortion'].append(train_max_distortion)
     agg['train_loss'].append(b_loss)
-    if epoch % 1 == 0:
+    if epoch % 100 == 0:
         print(f'====> Epoch: {epoch:03d} Loss: {b_loss:.4f}, Distortion: {train_distortion:.4f}, Max Distortion {train_max_distortion:.2f}')
 
 

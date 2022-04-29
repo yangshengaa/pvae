@@ -113,6 +113,11 @@ def _scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected):
     )
     return loss
 
+def _distortion_loss(emb_dists_selected, real_dists_selected):
+    """ directly use average distortion as the loss """
+    loss = torch.mean(emb_dists_selected / (real_dists_selected + Constants.eta)) * torch.mean(real_dists_selected / (emb_dists_selected + Constants.eta))
+    return loss
+
 # distortion evaluations 
 def _max_distortion_rate(emb_dists_selected, real_dists_selected):
     """ compute max distortion rate """ 
@@ -165,6 +170,8 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
         loss = _relative_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
     elif loss_function_type == 'scaled':
         loss = _scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
+    elif loss_function_type == 'distortion':
+        loss = _distortion_loss(emb_dists_selected, real_dists_selected)
     else:
         raise NotImplementedError(f'loss function type {loss_function_type} not available')
     

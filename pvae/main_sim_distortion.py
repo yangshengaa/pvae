@@ -119,6 +119,8 @@ parser.add_argument('--save-model-emb', default=False,
 ### model metric report 
 parser.add_argument('--save-model-report', default=True, 
                     help='whether to save model metrics')
+parser.add_argument('--save-each-epoch',  default=False,
+                    help='whether to record statistics of each epoch', type=bool)
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -159,11 +161,10 @@ loss_function_type = args.loss_function
 def train(epoch, agg):
     model.train()
     b_loss = 0.
-    for _, (data, labels) in enumerate(overall_loader):  # no train test split needed, yet  
+    for _, (data, _) in enumerate(overall_loader):  # no train test split needed, yet  
         data = data.to(device)
-        labels = labels.to(device)
         optimizer.zero_grad()
-        loss, train_distortion, train_max_distortion = loss_function(
+        loss, train_distortion, train_max_distortion, contractions_std, expansions_std = loss_function(
             model, data, shortest_path_mat, 
             use_hyperbolic=use_hyperbolic, c=curvature,
             loss_function_type=loss_function_type
@@ -178,8 +179,11 @@ def train(epoch, agg):
     agg['distortion'].append(train_distortion)
     agg['max_distortion'].append(train_max_distortion)
     agg['train_loss'].append(b_loss)
+    agg['contractions_std'].append(contractions_std)
+    agg['expansions_std'].append(expansions_std)
     if epoch % 100 == 0:
-        print(f'====> Epoch: {epoch:03d} Loss: {b_loss:.4f}, Distortion: {train_distortion:.4f}, Max Distortion {train_max_distortion:.2f}')
+        print(f'====> Epoch: {epoch:03d} Loss: {b_loss:.4f}, Distortion: {train_distortion:.4f}, Max Distortion {train_max_distortion:.2f}' + 
+        f', Contraction Std {contractions_std:.4f}, Expansion Std {expansions_std}')
 
 
 def save_emb():
@@ -198,36 +202,40 @@ def save_emb():
 def record_info(agg):
     """ record loss and distortion """
     basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},'
-    main_report = basic_params + f'{agg["train_loss"][-1]:.4f},{agg["distortion"][-1]:.3f},{agg["max_distortion"][-1]:.3f}'
-    loss_report = basic_params + ','.join([f"{agg['train_loss'][i]:.4f}" for i in range(len(agg['train_loss']))])
-    distortion_report = basic_params + ','.join([f"{agg['distortion'][i]:.5f}" for i in range(len(agg['distortion']))])
-    max_distortion_report = basic_params + ','.join([f"{agg['max_distortion'][i]:.5f}" for i in range(len(agg['max_distortion']))])
+    main_report = basic_params + f'{agg["train_loss"][-1]:.4f},{agg["distortion"][-1]:.3f},{agg["max_distortion"][-1]:.3f},{agg["contractions_std"][-1]:.4f},{agg["expansions_std"][-1]}'
+
+    if args.save_each_epoch:
+        loss_report = basic_params + ','.join([f"{agg['train_loss'][i]:.4f}" for i in range(len(agg['train_loss']))])
+        distortion_report = basic_params + ','.join([f"{agg['distortion'][i]:.5f}" for i in range(len(agg['distortion']))])
+        max_distortion_report = basic_params + ','.join([f"{agg['max_distortion'][i]:.5f}" for i in range(len(agg['max_distortion']))])
 
     # write to file 
     sim_record_path = 'experiments'
     with open(os.path.join(sim_record_path, 'sim_records.txt'), 'a') as f:
         f.write(main_report)
         f.write('\n')
-    with open(os.path.join(sim_record_path, 'sim_loss.txt'), 'a') as f:
-        f.write(loss_report)
-        f.write('\n')
-    with open(os.path.join(sim_record_path, 'sim_distortion.txt'), 'a') as f:
-        f.write(distortion_report)
-        f.write('\n')
-    with open(os.path.join(sim_record_path, 'sim_max_distortion.txt'), 'a') as f:
-        f.write(max_distortion_report)
-        f.write('\n')
     
-    # for testing only
-    # with open(os.path.join(sim_record_path, 'temp_sim_records.txt'), 'a') as f:
-    #     f.write(main_report)
-    #     f.write('\n')
-    # with open(os.path.join(sim_record_path, 'temp_sim_loss.txt'), 'a') as f:
-    #     f.write(loss_report)
-    #     f.write('\n')
-    # with open(os.path.join(sim_record_path, 'temp_sim_distortion.txt'), 'a') as f:
-    #     f.write(distortion_report)
-    #     f.write('\n')
+    if args.save_each_epoch:
+        with open(os.path.join(sim_record_path, 'sim_loss.txt'), 'a') as f:
+            f.write(loss_report)
+            f.write('\n')
+        with open(os.path.join(sim_record_path, 'sim_distortion.txt'), 'a') as f:
+            f.write(distortion_report)
+            f.write('\n')
+        with open(os.path.join(sim_record_path, 'sim_max_distortion.txt'), 'a') as f:
+            f.write(max_distortion_report)
+            f.write('\n')
+        
+        # # for testing only
+        # with open(os.path.join(sim_record_path, 'temp_sim_records.txt'), 'a') as f:
+        #     f.write(main_report)
+        #     f.write('\n')
+        # with open(os.path.join(sim_record_path, 'temp_sim_loss.txt'), 'a') as f:
+        #     f.write(loss_report)
+        #     f.write('\n')
+        # with open(os.path.join(sim_record_path, 'temp_sim_distortion.txt'), 'a') as f:
+        #     f.write(distortion_report)
+        #     f.write('\n')
 
 def main():
     """ main running """

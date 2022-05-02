@@ -119,22 +119,18 @@ def _distortion_loss(emb_dists_selected, real_dists_selected):
     return loss
 
 # distortion evaluations 
-def _max_distortion_rate(emb_dists_selected, real_dists_selected):
+def _max_distortion_rate(contractions, expansions):
     """ compute max distortion rate """ 
     with torch.no_grad():
-        contractions = real_dists_selected / (emb_dists_selected + Constants.eta)
-        expansions = emb_dists_selected / (real_dists_selected + Constants.eta)
         contraction = torch.max(contractions)       # max 
         expansion = torch.max(expansions)           # max 
         distortion = contraction * expansion
         return distortion
 
 
-def _distortion_rate(emb_dists_selected, real_dists_selected):
+def _distortion_rate(contractions, expansions):
     """ compute 'average' distortion rate """
     with torch.no_grad():
-        contractions = real_dists_selected / (emb_dists_selected + Constants.eta)
-        expansions = emb_dists_selected / (real_dists_selected + Constants.eta)
         contraction = torch.mean(contractions)      # mean 
         expansion = torch.mean(expansions)          # mean 
         distortion = contraction * expansion
@@ -175,8 +171,14 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
     else:
         raise NotImplementedError(f'loss function type {loss_function_type} not available')
     
-    # compute distortion 
-    distortion_rate = _distortion_rate(emb_dists_selected, real_dists_selected)
-    max_distortion_rate = _max_distortion_rate(emb_dists_selected, real_dists_selected)
+    # compute distortion and variances 
+    with torch.no_grad():
+        contractions = real_dists_selected / (emb_dists_selected + Constants.eta)
+        expansions = emb_dists_selected / (real_dists_selected + Constants.eta)
+        contractions_std = torch.std(contractions)
+        expansions_std = torch.std(expansions)
+        
+        distortion_rate = _distortion_rate(contractions, expansions)
+        max_distortion_rate = _max_distortion_rate(contractions, expansions)
 
-    return loss, distortion_rate, max_distortion_rate
+    return loss, distortion_rate, max_distortion_rate, contractions_std, expansions_std

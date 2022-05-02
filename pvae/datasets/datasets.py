@@ -1,10 +1,13 @@
 # load packages 
 import os 
+import random
 import pickle
 from csv import reader
-import numpy as np
 from itertools import combinations
 from typing import Dict, List, Tuple
+
+import numpy as np
+import matplotlib.pyplot as plt 
 
 import networkx as nx 
 
@@ -139,6 +142,7 @@ class SyntheticDataset(torch.utils.data.Dataset):
 # =========== for simulation use only ===============
 class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
     """
+    K-NN based
     explore distortion of tree like dataset using a hyperbolic embeddings 
 
     construct a tree-like data for simulation. The procedure is as follows:
@@ -185,8 +189,8 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
         label_data_tuple = list(self.sim_data_points_dict.items())
         self.data = np.vstack([x[1] for x in label_data_tuple])
         self.labels = np.array([[x[0] for x in label_data_tuple]]).T
-        
-
+    
+    # * the following two are meaningless
     def __len__(self):
         return len(self.data)
     
@@ -231,20 +235,12 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
             self.centroids = start_points_array  # for manual examination only
         else:
             start_points_array = self.centroids
-        # start_points_array = np.array([
-        #     [0, 1/3],
-        #     [0, -1/3],
-        #     [0.5, 0.75],
-        #     [0.5, -0.75],
-        #     [-0.5, 0.75],
-        #     [-0.5, -0.75]
-        # ])  # temporary!  for specific generation only 
-        
 
         start_points_array_dict = dict(zip(range(start_points_array.shape[0]), start_points_array))
 
         # construct MST
         edges = self.kruskal(start_points_array_dict)
+        self.edges = edges
 
         # generate noise
         if self.is_noiseless:
@@ -295,6 +291,7 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
             data_1, data_2 = sim_data_points_dict[idx_1], sim_data_points_dict[idx_2]
             cur_dist = np.linalg.norm(data_1 - data_2)
             g.edges[idx_1, idx_2]['dist'] = cur_dist  # passed in as attributes
+        self.g = g
 
         # create shortest path dict and dist matrix 
         dist_mat = torch.zeros(self.num_points, self.num_points, requires_grad=False)
@@ -307,7 +304,192 @@ class SyntheticTreeDistortionDataSet(torch.utils.data.Dataset):
         
         return sim_data_points_dict, shortest_path_dict, dist_mat
 
+class SyntheticTreeDistortionDataSetPermute(torch.utils.data.Dataset):
+    """ 
+    no K-NN used. Two types of permutations: 
+    - add_noise: add noise to nodes, connect the noise points to the node;
+    - change_edge: change the edge connecting a leaf node to another parent who has the same grand-parent. 
 
+    Need to input data points locations and edges to start with 
+    """
+    def __init__(
+        self, 
+        nodes_positions: np.ndarray, 
+        edges: List[Tuple[int, int]],
+        to_permute: bool=False,
+        permute_type: str='add_noise',
+        proportion_permute: float=0.3,
+        use_path_length: bool=False,
+        max_degree: int=3
+    ) -> None:
+        """ 
+        :param nodes_positions: the euclidean positions of the data points. Assuming indexed by 0 to len(.) - 1
+        :param edges: the list of edges to connect 
+        :param to_permute: false not to permute, true otherwise 
+        :param permute_type: either "add_noise" or "change_edge"
+        :param proportion_permute: proportion of points to permute. 
+        :param use_path_length: whether to use path length. False to use euclidean distances, otherwise length 1
+        :param max_degree: a add_noise specific parameter. Number of noise points added for a fixed point follows uniform([1, max_degree])
+        """
+        super().__init__()
+        self.nodes_positions = nodes_positions
+        self.edges = list(edges)  # deep copy 
+        self.to_permute = to_permute 
+        self.permute_type = permute_type 
+        self.proportion_permute = proportion_permute 
+        self.use_path_length = use_path_length
+        self.max_degree = max_degree 
+
+        self.n = self.nodes_positions.shape[1]  # number of dimensions
+
+        # construct a graph 
+        self.g = self.construct_graph()
+
+        # permute if necessary 
+        if self.to_permute:
+            self.permute()
+
+        # compute pairwise distance 
+        self.dist_mat = self.get_dist_mat()
+    
+
+    def construct_graph(self) -> nx.DiGraph:
+        """ 
+        construct a graph according to node positions and edges. Edges are weighted by euclidean distance 'dist' 
+        :return a graph (tree)
+        """
+        g = nx.DiGraph()  # a directed one to start with
+        g.add_edges_from(self.edges)
+
+        # weight by dist 
+        for node_1, node_2 in self.edges:
+            cur_dist = np.linalg.norm(self.nodes_positions[node_1] - self.nodes_positions[node_2])
+            g.edges[node_1, node_2]['dist'] = cur_dist
+        
+        return g
+    
+
+    def permute(self):
+        """ permute nodes or edges according to the rules above """
+        if self.permute_type == 'add_noise':
+            self.add_noise()
+        elif self.permute_type == 'change_edge':
+            self.change_edge()
+        else:
+            raise NotImplementedError("Permutation Type only supports add_noise and change_edge")
+
+
+    def add_noise(self):
+        """ add noise """
+        # prepare 
+        num_nodes = self.g.number_of_nodes()
+        num_nodes_to_permute = int(num_nodes * self.proportion_permute)
+        selected_node_indices = np.random.choice(range(num_nodes), size=num_nodes_to_permute, replace=False)
+        num_noise_per_node = np.random.randint(low=0, high=self.max_degree, size=num_nodes_to_permute) + 1
+
+        # add gaussian noise 
+        cur_noise_idx = num_nodes
+        for selected_node_idx, num_noise_cur_node in zip(selected_node_indices, num_noise_per_node):
+            selected_node = self.nodes_positions[selected_node_idx]
+            gaussian_noises = np.random.normal(scale=0.5, size=(num_noise_cur_node, self.n))  # ! tune noise 
+            noise_points = selected_node + gaussian_noises
+
+            # add to nodes 
+            self.nodes_positions = np.append(self.nodes_positions, noise_points, axis=0)
+
+            # add to graph, serially add after num_nodes
+            for noise_poiint in noise_points:
+                self.edges.append((selected_node_idx, cur_noise_idx))
+                self.g.add_edge(selected_node_idx, cur_noise_idx, dist=np.linalg.norm(selected_node - noise_poiint)) 
+                cur_noise_idx += 1
+
+
+    def change_edge(self):
+        """ change edge, assuming that each node has only one parent """
+        # prepare 
+        num_nodes = self.g.number_of_nodes()
+        num_nodes_to_permute = int(num_nodes * self.proportion_permute)
+        selected_node_indices = np.random.choice(range(num_nodes), size=num_nodes_to_permute, replace=False)
+
+        # change edges
+        for selected_node_idx in selected_node_indices:
+            parent_node_list = list(self.g.predecessors(selected_node_idx))
+
+            # if no predecessor, skip 
+            if len(parent_node_list) == 0:
+                continue
+            
+            parent_node_idx = parent_node_list[0]  # assuming only one parent
+            
+            grandparent_node_list = list(self.g.predecessors(parent_node_idx))
+
+            # if no grandparent, also skip 
+            if len(grandparent_node_list) == 0:
+                continue
+                
+            grandparent_node_idx = grandparent_node_list[0]
+
+            # select other parents 
+            other_parents = set(self.g.successors(grandparent_node_idx)) - set(parent_node_list)
+            # if that was the only parent, also skip 
+            if len(other_parents) == 0:
+                continue
+            
+            selected_other_parent_idx = random.sample(other_parents, 1)[0]
+
+            # remove and insert edges 
+            self.g.remove_edge(parent_node_idx, selected_node_idx)
+            self.g.add_edge(
+                selected_other_parent_idx, selected_node_idx,
+                dist=np.linalg.norm(self.nodes_positions[selected_other_parent_idx] - self.nodes_positions[selected_node_idx])
+            )
+
+            # update edge list 
+            self.edges.remove((parent_node_idx, selected_node_idx))
+            self.edges.append((selected_other_parent_idx, selected_node_idx))
+
+
+    def get_dist_mat(self):
+        """ compute pairwise distance and put into a matrix """
+        g_undirected = self.g.to_undirected()
+        num_nodes = g_undirected.number_of_nodes()
+        idx_list = combinations(range(num_nodes), 2)
+
+        dist_mat = np.zeros((num_nodes, num_nodes))
+        for idx_1, idx_2 in idx_list:
+            if self.use_path_length:
+                cur_dist = nx.shortest_path_length(g_undirected, idx_1, idx_2)
+            else:
+                cur_dist = nx.shortest_path_length(g_undirected, idx_1, idx_2, weight='dist')
+            dist_mat[idx_1, idx_2] = cur_dist
+            dist_mat[idx_2, idx_1] = cur_dist
+        
+        return dist_mat
+    
+
+    def visualize(self):
+        """ plot the plots """
+        fig, ax = plt.subplots(figsize=(10, 10))
+        plt.scatter(self.nodes_positions[:, 0], self.nodes_positions[:, 1])
+        for point_1_idx, point_2_idx in self.edges:
+            point_1 = self.nodes_positions[point_1_idx]
+            point_2 = self.nodes_positions[point_2_idx]
+            
+            x_values = [point_1[0], point_2[0]]
+            y_values = [point_1[1], point_2[1]]
+
+            plt.plot(x_values, y_values, 'grey', linewidth=0.5)
+        
+        
+    def save_to_folder(self, folder_name):
+        """ save euclidean coordinates, edge lists, dist_mat to the same folder """
+        with open(os.path.join(folder_name, 'sim_tree_points.npy'), 'wb') as f:
+            np.save(f, self.nodes_positions)
+        with open(os.path.join(folder_name, 'sim_tree_dist_mat.npy'), 'wb') as f:
+            np.save(f, self.dist_mat)
+        with open(os.path.join(folder_name, 'sim_tree_edges.npy'), 'wb') as f:
+            np.save(f, np.array(self.edges))
+ 
 class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
     """alternative to the above, read from file """
     def __init__(
@@ -317,14 +499,8 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
         self.path = folder_name
 
         # construct tree 
-        # self.sim_data_points_dict, self.shortest_path_dict, self.shortest_path_mat = self.read_tree_data()
         self.sim_data_points, self.shortest_path_mat = self.read_tree_data()
-        # self.shortest_path_mat = self.convert_shortest_path_dict_to_matrix(self.shortest_path_dict)
 
-        # unpack 
-        # label_data_tuple = list(self.sim_data_points_dict.items())
-        # self.data = np.vstack([x[1] for x in label_data_tuple])
-        # self.labels = np.array([[x[0] for x in label_data_tuple]]).T
         self.data = self.sim_data_points
         self.labels = np.array([range(len(self.data))]).T
 
@@ -339,16 +515,6 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
     # ----- util ------
     def read_tree_data(self):
         """read from file"""
-        # with open(os.path.join('data', self.path, 'sim_tree_dict.pkl'), 'rb') as f:
-        #     dicts = pickle.load(f)
-        
-        # sim_data_points_dict = dicts['sim_data_points_dict']
-        # shortest_path_dict = dicts['shortest_path_dict']
-
-        # # convert to tensor distance 
-        # for key, value in shortest_path_dict.items():
-        #     shortest_path_dict[key] = torch.tensor(value)
-
         # read data points 
         with open(os.path.join('data', self.path, 'sim_tree_points.npy'), 'rb') as f:
             sim_data_points = np.load(f)
@@ -360,15 +526,3 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
 
         # return sim_data_points_dict, shortest_path_dict, shortest_path_mat
         return sim_data_points, shortest_path_mat
-
-    # def convert_shortest_path_dict_to_matrix(self, shortest_path_dict):
-    #     """ convert dictionary into a symmetric matrix """
-    #     num_data_points = np.max([x[1] for x in shortest_path_dict.keys()]) + 1
-    #     dist_mat = torch.zeros(num_data_points, num_data_points)
-
-    #     # populate 
-    #     for (idx_1, idx_2), dist in shortest_path_dict.items():
-    #         dist_mat[idx_1, idx_2] = dist
-    #         dist_mat[idx_2, idx_1] = dist
-        
-    #     return dist_mat

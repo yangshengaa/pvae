@@ -1,8 +1,28 @@
 # [Continuous Hierarchical Representations with Poincaré Variational Auto-Encoders](https://arxiv.org/abs/1901.06033)
 
+## Developer Log
+
+- expmap0 in geoopt maps to a point that is twice larger a distance than the norm of vector itself. This is corrected by overriding the method in Poincare Ball.
+
+## Run Custom Simulation (Notes from Sheng Yang)
+
+
+To use predefined dataset, use
+
+```bash
+python3 pvae/main_sim_distortion.py --model simtreefile --manifold PoincareBall --latent-dim 2 --hidden-dim 100 --c 1 --data-size 2 --data-params sim_tree_18 --enc WrappedAlt --epochs 1000 --lr 1e-3
+```
+
+where ```sim_tree_18``` is the folder name of the dataset.
+
+We may use ```--no-model-report``` flag to disable logging of metrics afterwards, and use ```--save-model-emb``` flag to store trained model embeddings at the end.
+
+## Original
+
 ![demonstrative figure](images/tree.png)
 
 Code for reproducing the experiments in the paper:
+
 ```
 @inproceedings{mathieu2019poincare,
   title={Continuous Hierarchical Representations with Poincar\'e Variational Auto-Encoders},
@@ -13,27 +33,29 @@ Code for reproducing the experiments in the paper:
 ```
 
 ## Prerequisites
+
 `pip install -r -U requirements.txt` or `python3 setup.py install --user`
 
 ## Models
 
 ### VAE (`--manifold Euclidean`):
+
 - Prior distribution (`--prior`): `Normal` (`WrappedNormal` is theoretically equivalent)
 - Posterior distribution (`--posterior`): `Normal`  (`WrappedNormal` is theoretically equivalent)
 - Decoder architecture (`--dec`): `Linear` (MLP) (`Wrapped` is theoretically equivalent)
 - Encoder architecture (`--enc`): `Linear` (MLP) (`Wrapped` is theoretically equivalent)
-    
+
 ### PVAE (`--manifold PoincareBall`):
+
 - Curvature (`--c`): 1.0
 - Prior distribution (`--prior`): `WrappedNormal` or `RiemannianNormal`
 - Posterior distribution (`--posterior`): `WrappedNormal` or `RiemannianNormal`
 - Decoder architecture (`--dec`):
-    - `Linear` (MLP)
-    - `Wrapped` (logarithm map followed by MLP),
-    - `Geo` (first layer is based on geodesic distance to hyperplanes, followed by MLP)
-    - `Mob` (based on Hyperbolic feed-forward layers from Ganea et al (2018))
+  - `Linear` (MLP)
+  - `Wrapped` (logarithm map followed by MLP),
+  - `Geo` (first layer is based on geodesic distance to hyperplanes, followed by MLP)
+  - `Mob` (based on Hyperbolic feed-forward layers from Ganea et al (2018))
 - Encoder architecture (`--enc`): `Wrapped` or `Mob`
-
 
 ## Run experiments
 
@@ -52,19 +74,3 @@ python3 pvae/main.py --model mnist --manifold PoincareBall --c 0.7  --latent-dim
 ```
 python3 pvae/main.py --model csv --data-param CSV_NAME --data-size NB_FEATURES
 ```
-
-## Run Custom Simulation (Notes from Sheng Yang)
-
-To create new data set and simulate, use
-
-```bash
-python3 pvae/main_sim_distortion.py --model simtree --manifold PoincareBall --latent-dim 2 --hidden-dim 200 --c 1.2 --data-size 10 --data-params 8 100 5 --dec Wrapped --enc Wrapped  --epochs 500 --lr 1e-3
-```
-
-To use predefined dataset, use
-
-```python
-python3 pvae/main_sim_distortion.py --model simtreefile --manifold PoincareBall --latent-dim 2 --hidden-dim 100 --c 1 --data-size 2 --data-params sim_tree_1 --enc WrappedAlt --epochs 1000 --lr 1e-3
-```
-
-where ```sim_tree_1``` is the folder name of the dataset.

@@ -154,6 +154,7 @@ shortest_path_mat = shortest_path_mat.to(device)
 
 # parameters for ae objectives 
 use_hyperbolic = args.use_hyperbolic
+# use_hyperbolic = False
 curvature = torch.Tensor([args.c]).to(device)
 loss_function_type = args.loss_function
 
@@ -191,7 +192,10 @@ def save_emb():
     with torch.no_grad():
         for _, (data, _) in enumerate(overall_loader):
             data_emb = model(data).squeeze()
-        data_emb_np = data_emb.numpy()
+
+        # clip
+        data_emb_clipped = data_emb * torch.clamp(0.9 / torch.linalg.norm(data_emb, dim=1, keepdim=True), max=1)
+        data_emb_np = data_emb_clipped.numpy()
         
         # save 
         save_path = 'experiments'
@@ -201,7 +205,7 @@ def save_emb():
 
 def record_info(agg):
     """ record loss and distortion """
-    basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},'
+    basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{use_hyperbolic},{args.c},{args.loss_function},'
     main_report = basic_params + f'{agg["train_loss"][-1]:.4f},{agg["distortion"][-1]:.3f},{agg["max_distortion"][-1]:.3f},{agg["contractions_std"][-1]:.4f},{agg["expansions_std"][-1]}'
 
     if args.save_each_epoch:

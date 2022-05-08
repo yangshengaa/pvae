@@ -54,6 +54,19 @@ class GeodesicLayer(RiemannianLayer):
         return res
 
 
+class HyperbolicLayer(RiemannianLayer):
+    """ hyperbolic layer: geodesic + sinh + direct map """
+    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False):
+        super(HyperbolicLayer, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
+    
+    def forward(self, input):
+        input = input.unsqueeze(-2).expand(*input.shape[:-(len(input.shape) - 2)], self.out_features, self.in_features)
+        euclidean_features = self.manifold.normdist2plane(input, self.bias, self.weight,
+                                           signed=True, norm=self.weight_norm)
+        res = self.manifold.sinh_direct_map(euclidean_features)
+        return res
+
+
 class Linear(nn.Linear):
     def __init__(self, in_features, out_features, **kwargs):
         super(Linear, self).__init__(

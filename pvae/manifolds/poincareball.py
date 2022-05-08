@@ -73,6 +73,13 @@ class PoincareBall(PoincareBallParent):
 
         # TODO: suggestion from Zhengchao: try <log_p x, w> 
 
+    def sinh_direct_map(self, x):
+        """ insert sinh before direct map, suggested by Zhengchao """
+        c_sqrt = self.c.sqrt()
+        w = torch.sinh(c_sqrt * x) / c_sqrt
+        mapped_x = self.direct_map(w)
+        return mapped_x
+
     def direct_map(self, x):
         """ 
         a direct map to within the circle, suggested by Zhengchao 

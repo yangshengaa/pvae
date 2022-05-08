@@ -104,6 +104,24 @@ class EncWrappedAlt(nn.Module):
         mu = self.manifold.direct_map(mu)   # the only difference with EncWrapped
         return mu, F.softplus(self.fc22(e)) + Constants.eta,  self.manifold
 
+class EncWrappedSinhAlt(nn.Module):
+    """ alternative encoder of EncWrapped: MLP followed by sinh and a direct map """
+    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, prior_iso):
+        super(EncWrappedSinhAlt, self).__init__()
+        self.manifold = manifold
+        self.data_size = data_size
+        modules = []
+        modules.append(nn.Sequential(nn.Linear(prod(data_size), hidden_dim), non_lin))
+        modules.extend([extra_hidden_layer(hidden_dim, non_lin) for _ in range(num_hidden_layers - 1)])
+        self.enc = nn.Sequential(*modules)
+        self.fc21 = nn.Linear(hidden_dim, manifold.coord_dim)
+        self.fc22 = nn.Linear(hidden_dim, manifold.coord_dim if not prior_iso else 1)
+
+    def forward(self, x):
+        e = self.enc(x.view(*x.size()[:-len(self.data_size)], -1))
+        mu = self.fc21(e)                        # flatten data
+        mu = self.manifold.sinh_direct_map(mu)   # the only difference with EncWrapped
+        return mu, F.softplus(self.fc22(e)) + Constants.eta,  self.manifold
 
 class DecGeo(nn.Module):
     """ First layer is a Hypergyroplane followed by usual decoder """

@@ -29,6 +29,9 @@ class Euclidean(EuclideanParent):
     def expmap0(self, u):
         return u
     
+    def sinh_direct_map(self, u):
+        return u
+
     def direct_map(self, u):
         return u 
 

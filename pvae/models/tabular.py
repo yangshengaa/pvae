@@ -109,9 +109,14 @@ class TabularEnc(Enc):
     def __init__(self, params):
         c = nn.Parameter(params.c * torch.ones(1), requires_grad=False)
         manifold = getattr(manifolds, params.manifold)(params.latent_dim, c)
-        if 'Sim' in params.dec: # if in the simulation context, specify an extra argument for output dimension 
+        if 'Mixture' in params.enc: # testing mixture model 
             super(TabularEnc, self).__init__(
-                eval('Enc' + params.enc)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim, params.prior_iso),
+                eval('Enc' + params.enc)(
+                    params.manifold, params.data_size, 
+                    getattr(nn, params.nl)(), params.hidden_dims, 
+                    params.num_hyperbolic_layers, params.latent_dim, c,
+                    params.no_final_lift, params.lift_type
+                ),
                 params
             )
         else:

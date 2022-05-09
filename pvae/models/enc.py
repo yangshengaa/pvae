@@ -19,4 +19,3 @@ class Enc(nn.Module):
         encoder_result_raw = self.enc(x)
         encoder_result = encoder_result_raw[0]
         return encoder_result
-

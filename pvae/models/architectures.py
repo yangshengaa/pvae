@@ -3,8 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from numpy import prod
 from pvae.utils import Constants
-from pvae.ops.manifold_layers import GeodesicLayer, MobiusLayer, LogZero, ExpZero
+from pvae.ops.manifold_layers import GeodesicLayer, MobiusLayer, HyperbolicLayer, LogZero, ExpZero
 
+from pvae import manifolds
 
 def extra_hidden_layer(hidden_dim, non_lin):
     return nn.Sequential(nn.Linear(hidden_dim, hidden_dim), non_lin)
@@ -104,6 +105,7 @@ class EncWrappedAlt(nn.Module):
         mu = self.manifold.direct_map(mu)   # the only difference with EncWrapped
         return mu, F.softplus(self.fc22(e)) + Constants.eta,  self.manifold
 
+
 class EncWrappedSinhAlt(nn.Module):
     """ alternative encoder of EncWrapped: MLP followed by sinh and a direct map """
     def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, prior_iso):
@@ -122,6 +124,77 @@ class EncWrappedSinhAlt(nn.Module):
         mu = self.fc21(e)                        # flatten data
         mu = self.manifold.sinh_direct_map(mu)   # the only difference with EncWrapped
         return mu, F.softplus(self.fc22(e)) + Constants.eta,  self.manifold
+
+
+class EncMixture(nn.Module):
+    """ mixing euclidean with hyperbolic """
+    def __init__(
+            self, 
+            manifold_type, 
+            data_size, non_lin, hidden_dims, num_hyperbolic_layers, latent_dim, 
+            c,
+            no_final_lift, lift_type
+        ):
+        super(EncMixture, self).__init__()
+        self.manifold_type = manifold_type
+        self.data_size = data_size
+        self.non_lin = non_lin
+        self.c = c
+        self.no_final_lift = no_final_lift
+        self.lift_type = lift_type
+        self.hidden_dims = hidden_dims
+        self.dims_list = [prod(data_size), *self.hidden_dims, latent_dim]
+        self.num_hyperbolic_layers = num_hyperbolic_layers
+        self.num_euclidean_layers = len(hidden_dims) + 1 - self.num_hyperbolic_layers
+
+        # construct two sets of layers 
+        self.euclidean_layers, self.bridge_map, self.hyperbolic_layers = self.get_layers()
+    
+    def get_layers(self):
+        """ create euclidean and hyperbolic layers """
+        k, l = self.num_euclidean_layers, self.num_hyperbolic_layers
+
+        euclidean_layers_list, hyperbolic_layers_list = [], []
+
+        # construct euclidean layers 
+        for i in range(k):
+            euclidean_layers_list.append(nn.Sequential(
+                nn.Linear(self.dims_list[i], self.dims_list[i + 1]), self.non_lin)
+            )
+        
+        # construct bridging map 
+        bridge_manifold = getattr(manifolds, self.manifold_type)(self.dims_list[k], self.c)
+        if self.lift_type == 'expmap': 
+            bridge_map = bridge_manifold.expmap0
+        elif self.lift_type == 'direct':
+            bridge_map = bridge_manifold.direct_map
+        elif self.lift_type == 'sinh_direct':
+            bridge_map = bridge_manifold.sinh_direct_map
+        elif self.no_final_lift and l == 0:  # no hyperbolic layer and no lifting at the end
+            bridge_map == nn.Identity()
+        else:
+            raise NotImplementedError(f'lifting type {self.lift_type} not supported')
+
+        # construct hyperbolic layers
+        for i in range(k, k + l):
+            cur_dim = self.dims_list[i]
+            cur_manifold = getattr(manifolds, self.manifold_type)(cur_dim, self.c)
+            hyperbolic_layers_list.append(nn.Sequential(
+                HyperbolicLayer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold), self.non_lin
+            ))
+        
+        # final packing 
+        euclidean_layers = nn.Sequential(*euclidean_layers_list)
+        hyperbolic_layers = nn.Sequential(*hyperbolic_layers_list)
+        
+        return euclidean_layers, bridge_map, hyperbolic_layers
+    
+    def forward(self, x):
+        euclidean_out = self.euclidean_layers(x.view(*x.size()[:-len(self.data_size)], -1))
+        lifted_out = self.bridge_map(euclidean_out)
+        hyperbolic_out = self.hyperbolic_layers(lifted_out)
+        return hyperbolic_out, None, None
+
 
 class DecGeo(nn.Module):
     """ First layer is a Hypergyroplane followed by usual decoder """

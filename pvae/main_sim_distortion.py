@@ -76,9 +76,20 @@ parser.add_argument('--output-dim', type=int, default=None,
                     help='output dimension, just for distortion simulation (if None, output = input)')
 parser.add_argument('--nl', type=str, default='ReLU', help='non linearity')
 parser.add_argument('--enc', type=str, default='Wrapped', help='allow to choose different implemented encoder',
-                    choices=['Linear', 'Wrapped', 'WrappedAlt', 'WrappedSinhAlt','Mob'])
+                    choices=['Linear', 'Wrapped', 'WrappedAlt', 'WrappedSinhAlt', 'Mixture', 'Mob'])
 parser.add_argument('--dec', type=str, default='Wrapped', help='allow to choose different implemented decoder',
                     choices=['Linear', 'Wrapped', 'Geo', 'Mob', 'LinearSim', 'WrappedSim', 'GeoSim', 'MobSim'])
+
+## for EncMixture only 
+parser.add_argument('--hidden-dims', type=int, nargs='+', 
+                    help='specifying the dimensions of each hidden layers in order',
+                    default=[50, 50, 50, 50])
+parser.add_argument('--num-hyperbolic-layers', type=int, 
+                    help='number of hyperbolic layers', default=1)
+parser.add_argument('--no-final-lift', action='store_true', default=False,
+                    help='used to indicate no final lifting in the mixture model')
+parser.add_argument('--lift-type', default='expmap', choices=['expmap', 'direct', 'sinh_direct'], type=str,
+                    help='method to lift euclidean features to hyperbolic space, now supporting expmap, direct, and sinh_direct')
 
 ## Prior
 parser.add_argument('--prior-iso', action='store_true',
@@ -104,6 +115,8 @@ parser.add_argument('--no-model-report', action='store_true', default=False,
                     help='whether to save model metrics')
 parser.add_argument('--save-each-epoch', action='store_true', default=False,
                     help='whether to record statistics of each epoch')
+parser.add_argument('--record-name', type=str, default='',
+                    help='the name of the record file')
 
 ## technical 
 parser.add_argument('--cluster-code', default=0, type=int,
@@ -174,14 +187,20 @@ def save_emb():
         
         # save 
         save_path = 'experiments'
-        model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function}'
+        if 'Mixture' in args.enc: 
+            model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},{args.hidden_dims},{args.num_hyperbolic_layers},{args.no_final_lift},{args.lift_type}'
+        else:
+            model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function}'
         with open(os.path.join(save_path, model_params + '_data_emb.npy'), 'wb') as f:
             np.save(f, data_emb_np)
 
 
 def record_info(agg):
     """ record loss and distortion """
-    basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},'
+    if 'Mixture' in args.enc:
+        basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},\"{args.hidden_dims}\",{args.num_hyperbolic_layers},{args.no_final_lift},{args.lift_type}'
+    else:
+        basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},'
     main_report = basic_params + f'{agg["train_loss"][-1]:.4f},{agg["distortion"][-1]:.3f},{agg["max_distortion"][-1]:.3f},{agg["contractions_std"][-1]:.4f},{agg["expansions_std"][-1]}'
 
     if args.save_each_epoch:
@@ -192,18 +211,18 @@ def record_info(agg):
     # write to file 
     sim_record_path = 'experiments'
     cluster = args.cluster_code
-    with open(os.path.join(sim_record_path, 'sim_records.txt' if cluster == 0 else f'sim_records_{cluster}.txt'), 'a') as f:
+    with open(os.path.join(sim_record_path, f'sim_records_{args.record_name}.txt' if cluster == 0 else f'sim_records_{args.record_name}_{cluster}.txt'), 'a') as f:
         f.write(main_report)
         f.write('\n')
     
     if args.save_each_epoch:
-        with open(os.path.join(sim_record_path, 'sim_loss.txt' if cluster == 0 else f'sim_loss_{cluster}.txt'), 'a') as f:
+        with open(os.path.join(sim_record_path, f'sim_loss_{args.record_name}.txt' if cluster == 0 else f'sim_loss_{args.record_name}_{cluster}.txt'), 'a') as f:
             f.write(loss_report)
             f.write('\n')
-        with open(os.path.join(sim_record_path, 'sim_distortion.txt' if cluster == 0 else f'sim_distortion_{cluster}.txt'), 'a') as f:
+        with open(os.path.join(sim_record_path, f'sim_distortion_{args.record_name}.txt' if cluster == 0 else f'sim_distortion_{args.record_name}_{cluster}.txt'), 'a') as f:
             f.write(distortion_report)
             f.write('\n')
-        with open(os.path.join(sim_record_path, 'sim_max_distortion.txt' if cluster == 0 else f'sim_max_distortion_{cluster}.txt'), 'a') as f:
+        with open(os.path.join(sim_record_path, f'sim_max_distortion_{args.record_name}.txt' if cluster == 0 else f'sim_max_distortion_{args.record_name}_{cluster}.txt'), 'a') as f:
             f.write(max_distortion_report)
             f.write('\n')
         

@@ -60,9 +60,8 @@ class HyperbolicLayer(RiemannianLayer):
         super(HyperbolicLayer, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
     
     def forward(self, input):
-        input = input.unsqueeze(-2).expand(*input.shape[:-(len(input.shape) - 2)], self.out_features, self.in_features)
-        euclidean_features = self.manifold.normdist2plane(input, self.bias, self.weight,
-                                           signed=True, norm=self.weight_norm)
+        input = input.unsqueeze(-2).expand(-1, self.out_features, self.in_features)  # * only written for encoder to use 
+        euclidean_features = self.manifold.normdist2plane(input, self.bias, self.weight, signed=True, norm=self.weight_norm)
         res = self.manifold.sinh_direct_map(euclidean_features)
         return res
 

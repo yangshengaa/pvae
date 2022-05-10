@@ -158,9 +158,10 @@ class EncMixture(nn.Module):
 
         # construct euclidean layers 
         for i in range(k):
-            euclidean_layers_list.append(nn.Sequential(
-                nn.Linear(self.dims_list[i], self.dims_list[i + 1]), self.non_lin)
-            )
+            euclidean_layers_list.append(nn.Linear(self.dims_list[i], self.dims_list[i + 1]))
+            if i < k - 1:
+                # no non_lin at the final layer, or before bridge
+                euclidean_layers_list.append(self.non_lin)  
         
         # construct bridging map 
         bridge_manifold = getattr(manifolds, self.manifold_type)(self.dims_list[k], self.c)
@@ -179,9 +180,10 @@ class EncMixture(nn.Module):
         for i in range(k, k + l):
             cur_dim = self.dims_list[i]
             cur_manifold = getattr(manifolds, self.manifold_type)(cur_dim, self.c)
-            hyperbolic_layers_list.append(nn.Sequential(
-                HyperbolicLayer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold), self.non_lin
-            ))
+            hyperbolic_layers_list.append(HyperbolicLayer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold))
+            if i < k + l - 1:
+                # no non_lin at the final layer, or before bridge
+                hyperbolic_layers_list.append(self.non_lin)
         
         # final packing 
         euclidean_layers = nn.Sequential(*euclidean_layers_list)

@@ -21,7 +21,7 @@ from pvae.datasets import SyntheticDataset, CSVDataset, SyntheticTreeDistortionD
 class Tabular(VAE):
     """ Derive a specific sub-class of a VAE for tabular data. """
     def __init__(self, params):
-        c = nn.Parameter(params.c * torch.ones(1), requires_grad=False)
+        c = params.c
         manifold = getattr(manifolds, params.manifold)(params.latent_dim, c)
         super(Tabular, self).__init__(
             eval(params.prior),           # prior distribution
@@ -86,7 +86,7 @@ class CSV(Tabular):
 class TabularAE(AE):
     """ tabular, but vanilla autoencoder version """
     def __init__(self, params):
-        c = nn.Parameter(params.c * torch.ones(1), requires_grad=False)
+        c = params.c
         manifold = getattr(manifolds, params.manifold)(params.latent_dim, c)
         if 'Sim' in params.dec: # if in the simulation context, specify an extra argument for output dimension 
             super(TabularAE, self).__init__(
@@ -107,7 +107,7 @@ class TabularAE(AE):
 class TabularEnc(Enc):
     """ tabular, but only with an encoder layer """
     def __init__(self, params):
-        c = nn.Parameter(params.c * torch.ones(1), requires_grad=False)
+        c = params.c
         manifold = getattr(manifolds, params.manifold)(params.latent_dim, c)
         if 'Mixture' in params.enc: # testing mixture model 
             super(TabularEnc, self).__init__(

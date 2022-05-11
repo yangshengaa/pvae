@@ -1,6 +1,6 @@
 import torch
 from geoopt.manifolds import PoincareBall as PoincareBallParent
-from geoopt.manifolds.poincare.math import _lambda_x, arsinh, tanh
+from geoopt.manifolds.stereographic.math import _lambda_x, arsinh, tanh
 
 MIN_NORM = 1e-15
 
@@ -32,7 +32,7 @@ class PoincareBall(PoincareBallParent):
 
     def inner(self, x, u, v=None, *, keepdim=False, dim=-1):
         if v is None: v = u
-        return _lambda_x(x, self.c, keepdim=keepdim, dim=dim) ** 2 * (u * v).sum(
+        return _lambda_x(x, -self.c, keepdim=keepdim, dim=dim) ** 2 * (u * v).sum(
             dim=dim, keepdim=keepdim
         )
     

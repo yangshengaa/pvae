@@ -10,4 +10,4 @@ RUN apt-get -y install htop
 
 USER jovyan
 
-RUN pip install --no-cache-dir statsmodels seaborn scipy pillow networkx xgboost lightgbm torchvision git+https://github.com/geoopt/geoopt.git@010f5bdf1d6cf217fb47a767e2d93e39369e4cb2#egg=geoopt
+RUN pip install --no-cache-dir statsmodels seaborn scipy pillow networkx xgboost lightgbm torchvision geoopt

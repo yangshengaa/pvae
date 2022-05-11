@@ -5,7 +5,6 @@ for simulation to test distortion only, copy from main with minor modifications
 # load packages 
 import os
 import sys
-import datetime
 import argparse
 from collections import defaultdict
 
@@ -13,6 +12,7 @@ import numpy as np
 
 import torch
 from torch import optim
+from geoopt import optim as geo_optim
 
 # load files 
 sys.path.append(".")
@@ -43,6 +43,8 @@ parser.add_argument('--data-size', type=int, nargs='+',
                     default=[], help='size/shape of data observations')
 
 ### Optimisation
+parser.add_argument('--opt', type=str, default='adam', choices=['adam', 'riemannian_adam'],
+                    help="the choice of optimizer, now supporting adam and riemannian adam")
 parser.add_argument('--obj', type=str, default='vae',
                     help='objective to minimise (default: vae)')
 parser.add_argument('--epochs', type=int, default=50, metavar='E',
@@ -132,7 +134,16 @@ args.batch_size = 1  # dummy variable, useless since all are trained using a ful
 # Initialise model, optimizer, dataset loader and loss function
 modelC = getattr(models, 'Enc_{}'.format(args.model))
 model = modelC(args).to(device)
-optimizer = optim.Adam(model.parameters(), lr=args.lr, amsgrad=True, betas=(args.beta1, args.beta2))
+
+# select optimizer
+if args.opt == 'adam':
+    optimizer = optim.Adam(model.parameters(), lr=args.lr, amsgrad=True, betas=(args.beta1, args.beta2))
+elif args.opt == 'riemannian_adam':
+    optimizer = geo_optim.RiemannianAdam(model.parameters(), lr=args.lr, amsgrad=True, betas=(args.beta1, args.beta2))
+else:
+    raise NotImplementedError(f'optimizer {args.optimizer} not supported')
+
+# load data
 overall_loader, shortest_path_mat = model.getDataLoaders(
     args.batch_size, True, device, *args.data_params
 )

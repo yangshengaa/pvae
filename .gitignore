@@ -303,3 +303,5 @@ archive/
 pvae/make_sim_data.py
 report/
 error.txt
+output.txt
+latex_helper/

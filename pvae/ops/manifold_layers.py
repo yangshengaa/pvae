@@ -6,6 +6,10 @@ from torch.nn import init
 from pvae.manifolds import PoincareBall, Euclidean
 from geoopt import ManifoldParameter
 
+# init params 
+INIT_MEAN = 0
+INIT_STD = 0.5
+
 
 class RiemannianLayer(nn.Module):
     def __init__(self, in_features, out_features, manifold, over_param, weight_norm):
@@ -14,13 +18,13 @@ class RiemannianLayer(nn.Module):
         self.out_features = out_features
         self.manifold = manifold
 
-        self._weight = Parameter(torch.Tensor(out_features, in_features))
+        self._weight = Parameter(nn.init.normal_(torch.Tensor(out_features, in_features), mean=INIT_MEAN, std=INIT_STD))
         self.over_param = over_param
         self.weight_norm = weight_norm
         if self.over_param:
             self._bias = ManifoldParameter(torch.Tensor(out_features, in_features), manifold=manifold)
         else:
-            self._bias = Parameter(torch.Tensor(out_features, 1))
+            self._bias = Parameter(nn.init.normal_(torch.Tensor(out_features, 1), mean=INIT_MEAN, std=INIT_STD))
         self.reset_parameters()
 
     @property

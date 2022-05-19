@@ -181,9 +181,6 @@ class EncMixture(nn.Module):
             cur_dim = self.dims_list[i]
             cur_manifold = getattr(manifolds, self.manifold_type)(cur_dim, self.c)
             hyperbolic_layers_list.append(HyperbolicLayer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold))
-            if i < k + l - 1:
-                # no non_lin at the final layer, or before bridge
-                hyperbolic_layers_list.append(self.non_lin)
         
         # final packing 
         euclidean_layers = nn.Sequential(*euclidean_layers_list)

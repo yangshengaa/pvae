@@ -66,6 +66,7 @@ parser.add_argument('--loss-function', help='type of loss function', default='sc
 parser.add_argument('--latent-dim', type=int, default=10,
                     metavar='L', help='latent dimensionality (default: 10)')
 parser.add_argument('--c', type=float, default=1., help='curvature')
+parser.add_argument('--thr', type=float, default=0.99, help='hard boundary of Poincare Ball')
 parser.add_argument('--posterior', type=str, default='WrappedNormal', help='posterior distribution',
                     choices=['WrappedNormal', 'RiemannianNormal', 'Normal'])
 
@@ -155,6 +156,7 @@ shortest_path_mat = shortest_path_mat.to(device)
 # parameters for ae objectives 
 use_hyperbolic = False if args.use_euclidean else True
 args.use_hyperbolic = use_hyperbolic
+thr = args.thr
 # use_hyperbolic = False
 curvature = torch.Tensor([args.c]).to(device)
 loss_function_type = args.loss_function
@@ -169,7 +171,8 @@ def train(epoch, agg):
         loss, train_distortion, train_max_distortion, train_individual_distortion, contractions_std, expansions_std = loss_function(
             model, data, shortest_path_mat, 
             use_hyperbolic=use_hyperbolic, c=curvature,
-            loss_function_type=loss_function_type
+            loss_function_type=loss_function_type, 
+            thr=thr
         )
         probe_infnan(loss, "Training loss:")
         loss.backward()
@@ -185,7 +188,7 @@ def train(epoch, agg):
     agg['contractions_std'].append(contractions_std)
     agg['expansions_std'].append(expansions_std)
     if epoch % args.save_freq == 0:
-        print(f'====> Epoch: {epoch:03d} Loss: {b_loss:.4f}, Distortion: {train_distortion:.4f}, Idv Distortion: {train_individual_distortion:.4f}, Max Distortion {train_max_distortion:.2f}' + 
+        print(f'====> Epoch: {epoch:04d} Loss: {b_loss:.4f}, Distortion: {train_distortion:.4f}, Idv Distortion: {train_individual_distortion:.4f}, Max Distortion {train_max_distortion:.2f}' + 
         f', Contraction Std {contractions_std:.4f}, Expansion Std {expansions_std}')
 
 
@@ -197,7 +200,7 @@ def save_emb():
 
         # clip
         if not args.no_final_clip:
-            data_emb = data_emb * torch.clamp(0.9 / torch.linalg.norm(data_emb, dim=1, keepdim=True), max=1)
+            data_emb = data_emb * torch.clamp(thr / torch.linalg.norm(data_emb, dim=1, keepdim=True), max=1)
         data_emb_np = data_emb.numpy()
         
         # save 
@@ -213,7 +216,7 @@ def save_emb():
 def record_info(agg):
     """ record loss and distortion """
     if 'Mixture' in args.enc:
-        basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},\"{args.hidden_dims}\",{args.num_hyperbolic_layers},{args.no_final_lift},{args.lift_type},'
+        basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},\"{args.hidden_dims}\",{args.num_hyperbolic_layers},{args.no_final_lift},{args.lift_type},{args.opt}'
     else:
         basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},'
     main_report = basic_params + f'{agg["train_loss"][-1]:.4f},{agg["distortion"][-1]:.4f},{agg["individual_distortion"][-1]:.4f},{agg["max_distortion"][-1]:.3f},{agg["contractions_std"][-1]:.4f},{agg["expansions_std"][-1]}'

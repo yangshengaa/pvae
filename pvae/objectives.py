@@ -123,8 +123,13 @@ def _individual_distortion_loss(emb_dists, real_dists):
     pairwise_contraction = real_dists / (emb_dists + Constants.eta)
     pairwise_expansion = emb_dists / (real_dists + Constants.eta)
     pairwise_expansion.fill_diagonal_(0)
-
-    loss =  (pairwise_contraction.sum(axis=1) / (n - 1) * pairwise_contraction.sum(axis=1) / (n - 1)).mean()
+    
+    # compute individual
+    individual_pairwise_contraction = pairwise_contraction.sum(axis=1) / (n - 1)
+    individual_pairwise_expansion = pairwise_expansion.sum(axis=1) / (n - 1)
+    individual_distortion = individual_pairwise_contraction * individual_pairwise_expansion
+    
+    loss =  individual_distortion.mean()
     return loss
 
 # distortion evaluations 
@@ -151,7 +156,7 @@ def _individual_distortion_rate(emb_dists, real_dists):
         return _individual_distortion_loss(emb_dists, real_dists)
 
 
-def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=False, loss_function_type='scaled', c=1):
+def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=False, loss_function_type='scaled', c=1, thr=0.9):
     """
     minimize regression MSE (equally weighted) on the estimated pairwise distance. The output distance is 
     either measured in Euclidean or in hyperbolic sense
@@ -166,7 +171,7 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
 
     # select distance 
     if use_hyperbolic: 
-        emb_dists = _hyperbolic_pairwise_dist(reconstructed_data, c=c)
+        emb_dists = _hyperbolic_pairwise_dist(reconstructed_data, c=c, thr=thr)
     else:
         emb_dists = _euclidean_pairwise_dist(reconstructed_data)
     

@@ -305,3 +305,4 @@ report/
 error.txt
 output.txt
 latex_helper/
+.vscode/

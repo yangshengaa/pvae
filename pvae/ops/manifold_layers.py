@@ -18,13 +18,15 @@ class RiemannianLayer(nn.Module):
         self.out_features = out_features
         self.manifold = manifold
 
-        self._weight = Parameter(nn.init.normal_(torch.Tensor(out_features, in_features), mean=INIT_MEAN, std=INIT_STD))
+        # self._weight = Parameter(nn.init.normal_(torch.Tensor(out_features, in_features), mean=INIT_MEAN, std=INIT_STD))
+        self._weight = ManifoldParameter(nn.init.normal_(torch.Tensor(out_features, in_features), mean=INIT_MEAN, std=INIT_STD))
         self.over_param = over_param
         self.weight_norm = weight_norm
         if self.over_param:
             self._bias = ManifoldParameter(torch.Tensor(out_features, in_features), manifold=manifold)
         else:
-            self._bias = Parameter(nn.init.normal_(torch.Tensor(out_features, 1), mean=INIT_MEAN, std=INIT_STD))
+            # self._bias = Parameter(nn.init.normal_(torch.Tensor(out_features, 1), mean=INIT_MEAN, std=INIT_STD))
+            self._bias = ManifoldParameter(nn.init.normal_(torch.Tensor(out_features, 1), mean=INIT_MEAN, std=INIT_STD))
         self.reset_parameters()
 
     @property

@@ -166,12 +166,15 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
     # ----- util ------
     def read_tree_data(self):
         """read from file"""
+        # find path 
+        data_path = os.path.join('data', self.path)
+
         # read data points 
-        with open(os.path.join('data', self.path, 'sim_tree_points.npy'), 'rb') as f:
+        with open(os.path.join(data_path, 'sim_tree_points.npy'), 'rb') as f:
             sim_data_points = np.load(f)
         
         # read mat 
-        with open(os.path.join('data', self.path, 'sim_tree_dist_mat.npy'), 'rb') as f:
+        with open(os.path.join(data_path, 'sim_tree_dist_mat.npy'), 'rb') as f:
             shortest_path_mat = np.load(f)
         shortest_path_mat = torch.Tensor(shortest_path_mat)
 

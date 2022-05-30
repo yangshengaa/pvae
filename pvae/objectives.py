@@ -60,7 +60,7 @@ def _euclidean_pairwise_dist(data_mat):
     :param data_mat: of N by D 
     :return dist_mat: of N by N 
     """
-    dist_mat = torch.cdist(data_mat, data_mat, p=2).clamp(5e-4)
+    dist_mat = torch.cdist(data_mat, data_mat, p=2)
     return dist_mat
 
 def _hyperbolic_pairwise_dist(data_mat, c=1, thr=0.9):
@@ -72,7 +72,10 @@ def _hyperbolic_pairwise_dist(data_mat, c=1, thr=0.9):
     denom = (1 - c * data_mat_rescaled_norm ** 2) @ (1 - c * data_mat_rescaled_norm ** 2).T
 
     dist_mat = 1 / torch.sqrt(c) * torch.arccosh(
-        1 + 2 * c * euclidean_dist_mat ** 2 / denom
+        1 + 
+        (
+            2 * c * euclidean_dist_mat ** 2 / denom
+        ).clamp(min=1e-7)  # * note that the gradient of arcsinh could only be computed when input is larger than 1 + 1e-7
     )
     return dist_mat
 
@@ -203,4 +206,4 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
         max_distortion_rate = _max_distortion_rate(contractions, expansions)
         individual_distortion_rate = _individual_distortion_rate(emb_dists, shortest_path_mat)
 
-    return loss, distortion_rate, max_distortion_rate, individual_distortion_rate, contractions_std, expansions_std
+    return reconstructed_data, loss, distortion_rate, max_distortion_rate, individual_distortion_rate, contractions_std, expansions_std

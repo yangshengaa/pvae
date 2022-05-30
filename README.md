@@ -6,7 +6,6 @@
 
 ## Run Custom Simulation (Notes from Sheng Yang)
 
-
 To use predefined dataset, use
 
 ```bash
@@ -23,7 +22,7 @@ We may use ```--no-model-report``` flag to disable logging of metrics afterwards
 
 Code for reproducing the experiments in the paper:
 
-```
+```latex
 @inproceedings{mathieu2019poincare,
   title={Continuous Hierarchical Representations with Poincar\'e Variational Auto-Encoders},
   author={Mathieu, Emile and Le Lan, Charline and Maddison, Chris J. and Tomioka, Ryota and Whye Teh, Yee},
@@ -60,17 +59,20 @@ Code for reproducing the experiments in the paper:
 ## Run experiments
 
 ### Synthetic dataset
-```
+
+```bash
 python3 pvae/main.py --model tree --manifold PoincareBall --latent-dim 2 --hidden-dim 200 --prior-std 1.7 --c 1.2 --data-size 50 --data-params 6 2 1 1 5 5 --dec Wrapped --enc Wrapped  --prior RiemannianNormal --posterior RiemannianNormal --epochs 1000 --save-freq 1000 --lr 1e-3 --batch-size 64 --iwae-samples 5000
 ```
 
 ### MNIST dataset
-```
+
+```bash
 python3 pvae/main.py --model mnist --manifold Euclidean             --latent-dim 2 --hidden-dim 600 --prior Normal        --posterior Normal        --dec Wrapped --enc Wrapped --lr 5e-4 --epochs 80 --save-freq 80 --batch-size 128 --iwae-samples 5000
 python3 pvae/main.py --model mnist --manifold PoincareBall --c 0.7  --latent-dim 2 --hidden-dim 600 --prior WrappedNormal --posterior WrappedNormal --dec Geo     --enc Wrapped --lr 5e-4 --epochs 80 --save-freq 80 --batch-size 128 --iwae-samples 5000
 ```
 
 ### Custom dataset via csv file (placed in `/data`, no header, integer labels on last column)
-```
+
+```bash
 python3 pvae/main.py --model csv --data-param CSV_NAME --data-size NB_FEATURES
 ```

@@ -10,4 +10,6 @@ RUN apt-get -y install htop
 
 USER jovyan
 
-RUN pip install --no-cache-dir statsmodels seaborn scipy pillow networkx xgboost lightgbm torchvision geoopt gpustat
+RUN pip install --no-cache-dir statsmodels seaborn scipy pillow networkx xgboost lightgbm torchvision torchaudio geoopt gpustat 
+RUN conda install -c conda-forge python-igraph leidenalg
+RUN pip install scanpy autopep8 jupyterlab toml timebudget tensorboard rich torch-tb-profiler

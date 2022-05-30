@@ -306,3 +306,5 @@ error.txt
 output.txt
 latex_helper/
 .vscode/
+results/*
+!results/.gitkeep

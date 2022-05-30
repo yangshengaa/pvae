@@ -12,6 +12,8 @@ import numpy as np
 
 import torch
 from torch import optim
+from torch.utils.tensorboard import SummaryWriter
+
 from geoopt import optim as geo_optim
 
 # load files 
@@ -20,6 +22,7 @@ sys.path.append("..")
 from utils import Logger, Timer, save_model, save_vars, probe_infnan
 from objectives import ae_pairwise_dist_objective
 import models
+from vis import convert_fig_to_array, visualize_embeddings
 
 torch.backends.cudnn.benchmark = True
 
@@ -114,6 +117,10 @@ parser.add_argument('--save-model-emb', action='store_true', default=False,
                     help='whether to save the trained embeddings')
 parser.add_argument('--no-final-clip', action='store_true', default=False,
                     help='whether to save the clipped final embeddings')
+parser.add_argument('--log-train', action='store_true', default=False,
+                    help='whether to save model emb visualization')
+parser.add_argument('--log-train-epochs', default=20, type=int, 
+                    help='by this number of epochs we save a visualization')
 
 ### model metric report 
 parser.add_argument('--no-model-report', action='store_true', default=False, 
@@ -123,9 +130,6 @@ parser.add_argument('--save-each-epoch', action='store_true', default=False,
 parser.add_argument('--record-name', type=str, default='',
                     help='the name of the record file')
 
-## technical 
-parser.add_argument('--cluster-code', default=0, type=int,
-                    help='manually enable cluster computation. 0 means all in one instance, and 1, 2, 3 or 4 indicates current cluster')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -134,6 +138,7 @@ args.prior_iso = args.prior_iso or args.posterior == 'RiemannianNormal'
 args.batch_size = 1  # dummy variable, useless since all are trained using a full batch
 
 
+# ==============================================================
 # Initialise model, optimizer, dataset loader and loss function
 modelC = getattr(models, 'Enc_{}'.format(args.model))
 model = modelC(args).to(device)
@@ -146,6 +151,8 @@ elif args.opt == 'riemannian_adam':
 else:
     raise NotImplementedError(f'optimizer {args.optimizer} not supported')
 
+
+# =============================================================
 # load data
 overall_loader, shortest_path_mat = model.getDataLoaders(
     args.batch_size, True, device, *args.data_params
@@ -162,13 +169,38 @@ curvature = torch.Tensor([args.c]).to(device)
 loss_function_type = args.loss_function
 
 
+# ===========================================================
+if args.log_train: 
+    # encode model 
+    model_type = args.enc 
+    if model_type == 'Linear':
+        model_type += '_(hyp)' if use_hyperbolic else '_(euc)'
+    model_save_dir_name = '{}_{}_hd_{}_ld_{}_loss_{}'.format(
+        model_type, 
+        args.data_params[0],
+        args.hidden_dim,
+        args.latent_dim,
+        args.loss_function
+    )
+    model_save_dir = os.path.join('results', model_save_dir_name)
+
+    # load edges and color encoding 
+    with open(os.path.join('data', args.data_param[0], 'sim_tree_edges.npy'), 'rb') as f:
+        edges = np.load(f)
+
+    # TODO: make and load color encoding 
+    # Initialize tensorboard writer
+    tb_writer = SummaryWriter(log_dir=model_save_dir)
+
+
+# ==========================================================
 def train(epoch, agg):
     model.train()
     b_loss = 0.
     for _, (data, _) in enumerate(overall_loader):  # no train test split needed, yet  
         data = data.to(device)
         optimizer.zero_grad()
-        loss, train_distortion, train_max_distortion, train_individual_distortion, contractions_std, expansions_std = loss_function(
+        reconstructed_data, loss, train_distortion, train_max_distortion, train_individual_distortion, contractions_std, expansions_std = loss_function(
             model, data, shortest_path_mat, 
             use_hyperbolic=use_hyperbolic, c=curvature,
             loss_function_type=loss_function_type, 
@@ -190,6 +222,30 @@ def train(epoch, agg):
     if epoch % args.save_freq == 0:
         print(f'====> Epoch: {epoch:04d} Loss: {b_loss:.4f}, Distortion: {train_distortion:.4f}, Idv Distortion: {train_individual_distortion:.4f}, Max Distortion {train_max_distortion:.2f}' + 
         f', Contraction Std {contractions_std:.4f}, Expansion Std {expansions_std}')
+    
+    # ! testing purpose 
+    if args.log_train:
+        with torch.no_grad():
+            if epoch % args.log_train_epochs == 0:
+                # visualize 
+                trained_emb = reconstructed_data.numpy()
+                fig = visualize_embeddings(trained_emb, edges, model_save_dir_name, loss, thr)
+                img_arr = convert_fig_to_array(fig)
+                img_arr = torch.tensor(img_arr)
+
+                # write to tensorboard 
+                tb_writer.add_image('embedding/embedding_image', img_arr, epoch, dataformats='HWC')
+
+                # add metrics 
+                tb_writer.add_scalar('loss/loss', loss, epoch)
+                tb_writer.add_scalar('distortion/distortion', train_distortion, epoch)
+                tb_writer.add_scalar('individual_distortion/individual_distortion', train_individual_distortion, epoch)
+                tb_writer.add_scalar('max_distortion/max_distortion', train_max_distortion, epoch)
+                tb_writer.add_scalar('contraction_std/contraction_std', contractions_std, epoch)
+                tb_writer.add_scalar('expansion_std/expansion_std', expansions_std, epoch)
+                
+                # flush to disk
+                tb_writer.flush()
 
 
 def save_emb():

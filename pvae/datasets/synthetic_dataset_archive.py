@@ -279,7 +279,7 @@ class simple_case(ConcreteSyntheticDatasetParent):
 class single_dandelion(ConcreteSyntheticDatasetParent):
     """ a single dandelion, centered at 0 """
     def make_dataset(self):
-        num_nodes = 50
+        num_nodes = 15
 
         edges = []
         center_idx_list = []
@@ -287,7 +287,7 @@ class single_dandelion(ConcreteSyntheticDatasetParent):
 
         # center 1 
         thetas = np.linspace(0, 2 * np.pi, num_nodes)
-        rhos = np.random.uniform(low=7, high=10, size=num_nodes)
+        rhos = np.random.uniform(low=5, high=10, size=num_nodes)
 
         center = np.array([0, 0])
         nodes = np.vstack((rhos * np.cos(thetas), rhos * np.sin(thetas))).T  + center
@@ -299,7 +299,7 @@ class single_dandelion(ConcreteSyntheticDatasetParent):
         nodes_positions.append(np.array([center]))
 
         for node in nodes:
-            num_points_along_edge = np.random.randint(low=4, high=7)
+            num_points_along_edge = np.random.randint(low=2, high=5)
             inner_points = np.linspace(center, node, num_points_along_edge, axis=0)
 
             nodes_positions.append(inner_points[1:]) # excluding 0 
@@ -469,7 +469,7 @@ class random_rootless_tree(ConcreteSyntheticDatasetParent):
     def make_dataset(self):
 
         # random data points
-        dataset = SyntheticTreeDistortionDataSet(2, 300, 10)
+        dataset = SyntheticTreeDistortionDataSet(2, 50, 10)
         data = dataset.centroids * 10
 
 
@@ -478,14 +478,14 @@ class random_rootless_tree(ConcreteSyntheticDatasetParent):
         self.dataset = SyntheticTreeDistortionDataSetPermute(
             data, edges, 
             to_permute=self.kwargs['to_permute'], 
-            proportion_permute=self.kwargs['proprotion_permute'], 
+            proportion_permute=self.kwargs['proportion_permute'], 
             max_degree=self.kwargs['max_degree']
         )
 
 class explicit_tree(ConcreteSyntheticDatasetParent):
     """ an explicit tree dataset """
     def make_dataset(self):
-        tree_depth = 10
+        tree_depth = 5
         root = np.array([0, tree_depth])
         max_depth = tree_depth
 
@@ -496,7 +496,7 @@ class explicit_tree(ConcreteSyntheticDatasetParent):
         edges = []
         cur_depth_num_nodes = 1
         for depth in range(max_depth):
-            num_children = np.random.poisson(1.5, size=cur_depth_num_nodes)
+            num_children = np.random.poisson(2, size=cur_depth_num_nodes)
             children_positions = np.linspace(
                 np.array([-tree_depth, tree_depth - depth - 1]), 
                 np.array([tree_depth, tree_depth - depth - 1]), 
@@ -525,6 +525,82 @@ class explicit_tree(ConcreteSyntheticDatasetParent):
             nodes_positions, edges, 
             to_permute=self.kwargs['to_permute'], 
             permute_type=self.kwargs['permute_type'], 
-            use_path_length=self.kwargs['use_path_legnth'], 
+            use_path_length=self.kwargs['use_path_length'], 
             proportion_permute=self.kwargs['proportion_permute']
         )
+
+class transform_dataset(ConcreteSyntheticDatasetParent):
+    """ 
+    this one permutes other trees by assinging 
+    random nodes positions within a unit ball 
+    """
+    
+    def __init__(
+            self, index, 
+            dataset_to_permute, 
+            random_positions=True,
+            scale_factor=0.1, 
+            translation_vector=np.array([[0, 0]]),
+            **kwargs
+        ):
+        super().__init__(index, **kwargs)
+        self.dataset_to_permute = dataset_to_permute  # log other dataset 
+        self.random_positions = random_positions
+        self.scale_factor = scale_factor
+        self.translation_vector = translation_vector
+
+    @staticmethod
+    def assign_random_positions(n: int):
+        """ assign random positions within a unit ball """
+        # specify root 
+        root_position = np.array([[0, 0]])
+        # generate other points 
+        rhos = np.random.uniform(low=0, high=1, size=(n - 1, 1))
+        thetas = np.random.uniform(low=0, high=2 * np.pi, size=(n - 1, 1))
+        other_nodes_x = rhos * np.cos(thetas)
+        other_nodes_y = rhos * np.sin(thetas)
+        other_nodes = np.hstack((other_nodes_x, other_nodes_y))
+        
+        new_nodes_positions = np.vstack((root_position, other_nodes))
+        return new_nodes_positions
+    
+    @staticmethod 
+    def scale_and_translate(prev_nodes_positions, scale_factor, translation_vector):
+        """ scale and translate """
+        new_nodes_positions = prev_nodes_positions * scale_factor 
+        new_nodes_positions = new_nodes_positions + translation_vector
+        return new_nodes_positions
+    
+    def make_dataset(self):
+        """ permute dataset """
+        prev_nodes_positions = self.dataset_to_permute.dataset.nodes_positions
+        prev_edges = self.dataset_to_permute.dataset.edges 
+        prev_dist_mat = self.dataset_to_permute.dataset.dist_mat
+
+        number_of_points = prev_nodes_positions.shape[0]
+
+        if not self.random_positions: 
+            new_nodes_positions = transform_dataset.scale_and_translate(
+                prev_nodes_positions, 
+                self.scale_factor, 
+                self.translation_vector
+            )
+        else:
+            new_nodes_positions = transform_dataset.assign_random_positions(number_of_points)
+
+        # specify new dataset 
+        self.dataset = SyntheticTreeDistortionDataSetPermute(
+            new_nodes_positions, prev_edges, 
+            **self.kwargs
+            # to_permute=self.kwargs['to_permute'], 
+            # permute_type=self.kwargs['permute_type'],
+            # use_path_length=self.kwargs['use_path_length'],
+            # proportion_permute=self.kwargs['proportion_permute'], 
+            # max_degree=self.kwargs['max_degree']
+        )
+
+        # keep dist_mat the same !
+        self.dataset.dist_mat = prev_dist_mat
+
+
+# TODO: read from file to construct a class 

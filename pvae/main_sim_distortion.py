@@ -185,7 +185,7 @@ if args.log_train:
     model_save_dir = os.path.join('results', model_save_dir_name)
 
     # load edges and color encoding 
-    with open(os.path.join('data', args.data_param[0], 'sim_tree_edges.npy'), 'rb') as f:
+    with open(os.path.join('data', args.data_params[0], 'sim_tree_edges.npy'), 'rb') as f:
         edges = np.load(f)
 
     # TODO: make and load color encoding 
@@ -285,7 +285,7 @@ def record_info(agg):
 
     # write to file 
     sim_record_path = 'experiments'
-    cluster = args.cluster_code
+    cluster = 0
     with open(os.path.join(sim_record_path, f'sim_records_{args.record_name}.txt' if cluster == 0 else f'sim_records_{args.record_name}_{cluster}.txt'), 'a') as f:
         f.write(main_report)
         f.write('\n')

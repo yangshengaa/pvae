@@ -175,12 +175,13 @@ if args.log_train:
     model_type = args.enc 
     if model_type == 'Linear':
         model_type += '_(hyp)' if use_hyperbolic else '_(euc)'
-    model_save_dir_name = '{}_{}_hd_{}_ld_{}_loss_{}'.format(
+    model_save_dir_name = '{}_{}_hd_{}_ld_{}_loss_{}_epochs_{}'.format(
         model_type, 
         args.data_params[0],
         args.hidden_dim,
         args.latent_dim,
-        args.loss_function
+        args.loss_function,
+        args.epochs
     )
     model_save_dir = os.path.join('results', model_save_dir_name)
 
@@ -228,7 +229,7 @@ def train(epoch, agg):
         with torch.no_grad():
             if epoch % args.log_train_epochs == 0:
                 # visualize 
-                trained_emb = reconstructed_data.numpy()
+                trained_emb = reconstructed_data.cpu().numpy()  # feed back to cpu to plot 
                 fig = visualize_embeddings(trained_emb, edges, model_save_dir_name, loss, thr)
                 img_arr = convert_fig_to_array(fig)
                 img_arr = torch.tensor(img_arr)

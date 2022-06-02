@@ -25,14 +25,15 @@ def array_plot(points, filepath):
     plt.clf()
 
 # ============== for simulation only ===================
-def visualize_embeddings(trained_emb, edges, model_type, loss, thr):
+def visualize_embeddings(trained_emb, edges, model_type, loss, diameter, thr):
     """ 
     plot embeddings, along with the hard boundary
 
     :param trained_emb: the training embeddings 
     :param edges: the edge list
     :param model_type: the name of the model 
-    :param loss: the loss at a particular epoch 
+    :param loss: the loss at a particular epoch,
+    :param diameter: the diameter of the embedding
     :param thr: the threshold for hard boundary 
     :return a fig 
     """
@@ -61,7 +62,7 @@ def visualize_embeddings(trained_emb, edges, model_type, loss, thr):
         ax=ax
     )
     ax.scatter([trained_emb[0][0]], [trained_emb[0][1]], color='red')
-    ax.set_title('{}, distortion: {}'.format(model_type, loss))
+    ax.set_title('{}, distortion: {:.4f}, diameter: {:.2f}'.format(model_type, loss, diameter))
 
     # visualize hard boundary 
     t = np.linspace(0, 2 * np.pi, 100)

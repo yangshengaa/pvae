@@ -79,6 +79,10 @@ def _hyperbolic_pairwise_dist(data_mat, c=1, thr=0.9):
     )
     return dist_mat
 
+def _diameter(emb_dists):
+    """ compute the diameter of the embeddings """
+    return torch.max(emb_dists)
+
 # loss functions 
 def _select_upper_triangular(emb_dists, real_dists):
     """ select the upper triangular portion of the distance matrix """
@@ -206,4 +210,6 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
         max_distortion_rate = _max_distortion_rate(contractions, expansions)
         individual_distortion_rate = _individual_distortion_rate(emb_dists, shortest_path_mat)
 
-    return reconstructed_data, loss, distortion_rate, max_distortion_rate, individual_distortion_rate, contractions_std, expansions_std
+        diameter = _diameter(emb_dists_selected)
+
+    return reconstructed_data, loss, distortion_rate, max_distortion_rate, individual_distortion_rate, contractions_std, expansions_std, diameter

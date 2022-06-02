@@ -201,7 +201,16 @@ def train(epoch, agg):
     for _, (data, _) in enumerate(overall_loader):  # no train test split needed, yet  
         data = data.to(device)
         optimizer.zero_grad()
-        reconstructed_data, loss, train_distortion, train_max_distortion, train_individual_distortion, contractions_std, expansions_std = loss_function(
+        (
+            reconstructed_data, 
+            loss, 
+            train_distortion, 
+            train_max_distortion, 
+            train_individual_distortion, 
+            contractions_std, 
+            expansions_std,
+            diameter
+        ) = loss_function(
             model, data, shortest_path_mat, 
             use_hyperbolic=use_hyperbolic, c=curvature,
             loss_function_type=loss_function_type, 
@@ -222,7 +231,7 @@ def train(epoch, agg):
     agg['expansions_std'].append(expansions_std)
     if epoch % args.save_freq == 0:
         print(f'====> Epoch: {epoch:04d} Loss: {b_loss:.4f}, Distortion: {train_distortion:.4f}, Idv Distortion: {train_individual_distortion:.4f}, Max Distortion {train_max_distortion:.2f}' + 
-        f', Contraction Std {contractions_std:.4f}, Expansion Std {expansions_std}')
+        f', Contraction Std {contractions_std:.4f}, Expansion Std {expansions_std:.6f}, Diameter {diameter:.2f}')
     
     # ! testing purpose 
     if args.log_train:
@@ -230,7 +239,7 @@ def train(epoch, agg):
             if epoch % args.log_train_epochs == 0:
                 # visualize 
                 trained_emb = reconstructed_data.cpu().numpy()  # feed back to cpu to plot 
-                fig = visualize_embeddings(trained_emb, edges, model_save_dir_name, loss, thr)
+                fig = visualize_embeddings(trained_emb, edges, model_save_dir_name, loss, diameter, thr)
                 img_arr = convert_fig_to_array(fig)
                 img_arr = torch.tensor(img_arr)
 
@@ -244,6 +253,7 @@ def train(epoch, agg):
                 tb_writer.add_scalar('max_distortion/max_distortion', train_max_distortion, epoch)
                 tb_writer.add_scalar('contraction_std/contraction_std', contractions_std, epoch)
                 tb_writer.add_scalar('expansion_std/expansion_std', expansions_std, epoch)
+                tb_writer.add_scalar('diameter/diameter', diameter, epoch)
                 
                 # flush to disk
                 tb_writer.flush()

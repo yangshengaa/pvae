@@ -173,16 +173,29 @@ loss_function_type = args.loss_function
 if args.log_train: 
     # encode model 
     model_type = args.enc 
-    if model_type == 'Linear':
-        model_type += '_(hyp)' if use_hyperbolic else '_(euc)'
-    model_save_dir_name = '{}_{}_hd_{}_ld_{}_loss_{}_epochs_{}'.format(
-        model_type, 
-        args.data_params[0],
-        args.hidden_dim,
-        args.latent_dim,
-        args.loss_function,
-        args.epochs
-    )
+    if model_type == 'Mixture':
+        model_save_dir_name = '{}_{}_hd_{}_lift_{}_numhyp_{}_nofinal_{}_ld_{}_loss_{}_epochs_{}'.format(
+            model_type, 
+            args.data_params[0],
+            args.hidden_dims,
+            args.lift_type,
+            args.num_hyperbolic_layers,
+            args.no_final_lift,
+            args.latent_dim,
+            args.loss_function,
+            args.epochs
+        )
+    else:
+        if model_type == 'Linear':
+            model_type += '_(hyp)' if use_hyperbolic else '_(euc)'
+        model_save_dir_name = '{}_{}_hd_{}_ld_{}_loss_{}_epochs_{}'.format(
+            model_type, 
+            args.data_params[0],
+            args.hidden_dim,
+            args.latent_dim,
+            args.loss_function,
+            args.epochs
+        )
     model_save_dir = os.path.join('results', model_save_dir_name)
 
     # load edges and color encoding 

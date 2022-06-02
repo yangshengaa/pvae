@@ -62,7 +62,7 @@ def visualize_embeddings(trained_emb, edges, model_type, loss, diameter, thr):
         ax=ax
     )
     ax.scatter([trained_emb[0][0]], [trained_emb[0][1]], color='red')
-    ax.set_title('{}, distortion: {:.4f}, diameter: {:.2f}'.format(model_type, loss, diameter))
+    ax.set_title('{} \n distortion: {:.4f}, diameter: {:.2f}'.format(model_type, loss, diameter))
 
     # visualize hard boundary 
     t = np.linspace(0, 2 * np.pi, 100)

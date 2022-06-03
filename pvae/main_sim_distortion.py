@@ -20,7 +20,7 @@ from geoopt import optim as geo_optim
 sys.path.append(".")
 sys.path.append("..")
 from utils import Logger, Timer, save_model, save_vars, probe_infnan
-from objectives import ae_pairwise_dist_objective
+from objectives import ae_pairwise_dist_objective, metric_report
 import models
 from vis import convert_fig_to_array, visualize_embeddings
 
@@ -63,7 +63,7 @@ parser.add_argument('--lr', type=float, default=1e-4,
 parser.add_argument('--use-euclidean',  action='store_true', default=False,
                     help='use hyperbolic or euclidean distance for outputs, default=False')
 parser.add_argument('--loss-function', help='type of loss function', default='scaled', type=str, 
-                    choices=['raw', 'relative', 'scaled', 'distortion', 'individual_distortion'])
+                    choices=['raw', 'relative', 'scaled', 'distortion', 'individual_distortion', 'modified_individual_distortion', 'robust_individual_distortion'])
 
 ### Model
 parser.add_argument('--latent-dim', type=int, default=10,
@@ -82,7 +82,7 @@ parser.add_argument('--output-dim', type=int, default=None,
                     help='output dimension, just for distortion simulation (if None, output = input)')
 parser.add_argument('--nl', type=str, default='ReLU', help='non linearity')
 parser.add_argument('--enc', type=str, default='Wrapped', help='allow to choose different implemented encoder',
-                    choices=['Linear', 'Wrapped', 'WrappedAlt', 'WrappedSinhAlt', 'Mixture', 'Mob'])
+                    choices=['Linear', 'Wrapped', 'WrappedNaive', 'WrappedAlt', 'WrappedSinhAlt', 'Mixture'])
 parser.add_argument('--dec', type=str, default='Wrapped', help='allow to choose different implemented decoder',
                     choices=['Linear', 'Wrapped', 'Geo', 'Mob', 'LinearSim', 'WrappedSim', 'GeoSim', 'MobSim'])
 
@@ -96,6 +96,8 @@ parser.add_argument('--no-final-lift', action='store_true', default=False,
                     help='used to indicate no final lifting in the mixture model')
 parser.add_argument('--lift-type', default='expmap', choices=['expmap', 'direct', 'sinh_direct'], type=str,
                     help='method to lift euclidean features to hyperbolic space, now supporting expmap, direct, and sinh_direct')
+parser.add_argument('--no-bn', action="store_true", default=False,
+                    help='turn on to disable batch normalization')
 
 ## Prior
 parser.add_argument('--prior-iso', action='store_true',
@@ -157,7 +159,7 @@ else:
 overall_loader, shortest_path_mat = model.getDataLoaders(
     args.batch_size, True, device, *args.data_params
 )
-loss_function = ae_pairwise_dist_objective 
+loss_function = ae_pairwise_dist_objective  
 shortest_path_mat = shortest_path_mat.to(device)
 
 # parameters for ae objectives 
@@ -185,6 +187,7 @@ if args.log_train:
             args.loss_function,
             args.epochs
         )
+        model_save_dir_name += '_bn' if not args.no_bn else ''
     else:
         if model_type == 'Linear':
             model_type += '_(hyp)' if use_hyperbolic else '_(euc)'
@@ -196,6 +199,7 @@ if args.log_train:
             args.loss_function,
             args.epochs
         )
+        model_save_dir_name += '_bn' if not args.no_bn else ''
     model_save_dir = os.path.join('results', model_save_dir_name)
 
     # load edges and color encoding 
@@ -217,12 +221,7 @@ def train(epoch, agg):
         (
             reconstructed_data, 
             loss, 
-            train_distortion, 
-            train_max_distortion, 
-            train_individual_distortion, 
-            contractions_std, 
-            expansions_std,
-            diameter
+            (emb_dists_selected, real_dists_selected, emb_dists)
         ) = loss_function(
             model, data, shortest_path_mat, 
             use_hyperbolic=use_hyperbolic, c=curvature,
@@ -235,21 +234,36 @@ def train(epoch, agg):
 
         b_loss += loss.item()
 
-    # agg['train_loss'].append(b_loss)
-    agg['distortion'].append(train_distortion)
-    agg['max_distortion'].append(train_max_distortion)
-    agg['individual_distortion'].append(train_individual_distortion)
-    agg['train_loss'].append(b_loss)
-    agg['contractions_std'].append(contractions_std)
-    agg['expansions_std'].append(expansions_std)
-    if epoch % args.save_freq == 0:
-        print(f'====> Epoch: {epoch:04d} Loss: {b_loss:.4f}, Distortion: {train_distortion:.4f}, Idv Distortion: {train_individual_distortion:.4f}, Max Distortion {train_max_distortion:.2f}' + 
-        f', Contraction Std {contractions_std:.4f}, Expansion Std {expansions_std:.6f}, Diameter {diameter:.2f}')
+    # compute metric
+    if epoch % args.save_freq == 0 or (epoch % args.log_train_epochs == 0 and args.log_train):
+        ( 
+            distortion, individual_distortion, max_distortion,
+            relative_rate, scaled_rate,
+            contractions_std, expansions_std,
+            diameter 
+        ) = metric_report(emb_dists_selected, real_dists_selected, emb_dists, shortest_path_mat)
+
+        # log 
+        agg['train_loss'].append(b_loss)
+        agg['distortion'].append(distortion)
+        agg['max_distortion'].append(max_distortion)
+        agg['individual_distortion'].append(individual_distortion)
+        agg['relative'].append(relative_rate)
+        agg['scaled'].append(scaled_rate)
+        agg['contractions_std'].append(contractions_std)
+        agg['expansions_std'].append(expansions_std)
+        agg['diameter'].append(diameter)
+
+        # print 
+        if epoch % args.save_freq == 0:
+            print(f'====> Epoch: {epoch:04d}, ' + 
+            f'Loss: {b_loss:.4f}, Distortion: {distortion:.4f}, Idv Distortion: {individual_distortion:.4f}, Max Distortion {max_distortion:.2f}, ' + 
+            f'relative: {relative_rate:.2f}, scaled: {scaled_rate:.2f}, ' + 
+            f'Contraction Std {contractions_std:.4f}, Expansion Std {expansions_std:.6f}, Diameter {diameter:.2f}')
     
-    # ! testing purpose 
-    if args.log_train:
-        with torch.no_grad():
-            if epoch % args.log_train_epochs == 0:
+    # tensorboard visualization 
+        if args.log_train:
+            with torch.no_grad():
                 # visualize 
                 trained_emb = reconstructed_data.cpu().numpy()  # feed back to cpu to plot 
                 fig = visualize_embeddings(trained_emb, edges, model_save_dir_name, loss, diameter, thr)
@@ -261,9 +275,11 @@ def train(epoch, agg):
 
                 # add metrics 
                 tb_writer.add_scalar('loss/loss', loss, epoch)
-                tb_writer.add_scalar('distortion/distortion', train_distortion, epoch)
-                tb_writer.add_scalar('individual_distortion/individual_distortion', train_individual_distortion, epoch)
-                tb_writer.add_scalar('max_distortion/max_distortion', train_max_distortion, epoch)
+                tb_writer.add_scalar('distortion/distortion', distortion, epoch)
+                tb_writer.add_scalar('individual_distortion/individual_distortion', individual_distortion, epoch)
+                tb_writer.add_scalar('max_distortion/max_distortion', max_distortion, epoch)
+                tb_writer.add_scalar('relative/relative', relative_rate, epoch)
+                tb_writer.add_scalar('scaled/scaled', scaled_rate, epoch)
                 tb_writer.add_scalar('contraction_std/contraction_std', contractions_std, epoch)
                 tb_writer.add_scalar('expansion_std/expansion_std', expansions_std, epoch)
                 tb_writer.add_scalar('diameter/diameter', diameter, epoch)
@@ -286,9 +302,9 @@ def save_emb():
         # save 
         save_path = 'experiments'
         if 'Mixture' in args.enc: 
-            model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},{args.hidden_dims},{args.num_hyperbolic_layers},{args.no_final_lift},{args.lift_type}'
+            model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},{args.hidden_dims},{args.num_hyperbolic_layers},{args.no_final_lift},{args.lift_type},{args.no_bn},'
         else:
-            model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function}'
+            model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},{args.no_bn},'
         with open(os.path.join(save_path, model_params + '_data_emb.npy'), 'wb') as f:
             np.save(f, data_emb_np)
 
@@ -296,16 +312,27 @@ def save_emb():
 def record_info(agg):
     """ record loss and distortion """
     if 'Mixture' in args.enc:
-        basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},\"{args.hidden_dims}\",{args.num_hyperbolic_layers},{args.no_final_lift},{args.lift_type},{args.opt},'
+        basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},\"{args.hidden_dims}\",{args.num_hyperbolic_layers},{args.no_final_lift},{args.lift_type},{args.opt},{args.no_bn},'
     else:
-        basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},'
-    main_report = basic_params + f'{agg["train_loss"][-1]:.4f},{agg["distortion"][-1]:.4f},{agg["individual_distortion"][-1]:.4f},{agg["max_distortion"][-1]:.3f},{agg["contractions_std"][-1]:.4f},{agg["expansions_std"][-1]}'
+        basic_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},{args.no_bn},'
+    main_report = (
+        basic_params + 
+        f'{agg["train_loss"][-1]:.4f},' + 
+        f'{agg["distortion"][-1]:.4f},' + 
+        f'{agg["individual_distortion"][-1]:.4f},' + 
+        f'{agg["max_distortion"][-1]:.3f},' + 
+        f'{agg["relative"][-1]:.4f},' + 
+        f'{agg["scaled"][-1]:.4f},' + 
+        f'{agg["contractions_std"][-1]:.4f},' + 
+        f'{agg["expansions_std"][-1]:.6f},' + 
+        f'{agg["diameter"][-1]:.2f}'
+    )
 
-    if args.save_each_epoch:
-        loss_report = basic_params + ','.join([f"{agg['train_loss'][i]:.4f}" for i in range(len(agg['train_loss']))])
-        distortion_report = basic_params + ','.join([f"{agg['distortion'][i]:.5f}" for i in range(len(agg['distortion']))])
-        max_distortion_report = basic_params + ','.join([f"{agg['max_distortion'][i]:.5f}" for i in range(len(agg['max_distortion']))])
-        individual_distortion_report = basic_params + ','.join([f"{agg['individual_distortion'][i]:.5f}" for i in range(len(agg['individual_distortion']))])
+    # if args.save_each_epoch:
+    #     loss_report = basic_params + ','.join([f"{agg['train_loss'][i]:.4f}" for i in range(len(agg['train_loss']))])
+    #     distortion_report = basic_params + ','.join([f"{agg['distortion'][i]:.5f}" for i in range(len(agg['distortion']))])
+    #     max_distortion_report = basic_params + ','.join([f"{agg['max_distortion'][i]:.5f}" for i in range(len(agg['max_distortion']))])
+    #     individual_distortion_report = basic_params + ','.join([f"{agg['individual_distortion'][i]:.5f}" for i in range(len(agg['individual_distortion']))])
 
     # write to file 
     sim_record_path = 'experiments'
@@ -314,19 +341,19 @@ def record_info(agg):
         f.write(main_report)
         f.write('\n')
     
-    if args.save_each_epoch:
-        with open(os.path.join(sim_record_path, f'sim_loss_{args.record_name}.txt' if cluster == 0 else f'sim_loss_{args.record_name}_{cluster}.txt'), 'a') as f:
-            f.write(loss_report)
-            f.write('\n')
-        with open(os.path.join(sim_record_path, f'sim_distortion_{args.record_name}.txt' if cluster == 0 else f'sim_distortion_{args.record_name}_{cluster}.txt'), 'a') as f:
-            f.write(distortion_report)
-            f.write('\n')
-        with open(os.path.join(sim_record_path, f'sim_max_distortion_{args.record_name}.txt' if cluster == 0 else f'sim_max_distortion_{args.record_name}_{cluster}.txt'), 'a') as f:
-            f.write(max_distortion_report)
-            f.write('\n')
-        with open(os.path.join(sim_record_path, f'sim_individual_distortion_{args.record_name}.txt' if cluster == 0 else f'sim_individual_distortion_{args.record_name}_{cluster}.txt'), 'a') as f:
-            f.write(individual_distortion_report)
-            f.write('\n')
+    # if args.save_each_epoch:
+    #     with open(os.path.join(sim_record_path, f'sim_loss_{args.record_name}.txt' if cluster == 0 else f'sim_loss_{args.record_name}_{cluster}.txt'), 'a') as f:
+    #         f.write(loss_report)
+    #         f.write('\n')
+    #     with open(os.path.join(sim_record_path, f'sim_distortion_{args.record_name}.txt' if cluster == 0 else f'sim_distortion_{args.record_name}_{cluster}.txt'), 'a') as f:
+    #         f.write(distortion_report)
+    #         f.write('\n')
+    #     with open(os.path.join(sim_record_path, f'sim_max_distortion_{args.record_name}.txt' if cluster == 0 else f'sim_max_distortion_{args.record_name}_{cluster}.txt'), 'a') as f:
+    #         f.write(max_distortion_report)
+    #         f.write('\n')
+    #     with open(os.path.join(sim_record_path, f'sim_individual_distortion_{args.record_name}.txt' if cluster == 0 else f'sim_individual_distortion_{args.record_name}_{cluster}.txt'), 'a') as f:
+    #         f.write(individual_distortion_report)
+    #         f.write('\n')
         
 
 def main():

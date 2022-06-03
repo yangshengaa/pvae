@@ -60,7 +60,7 @@ def _euclidean_pairwise_dist(data_mat):
     :param data_mat: of N by D 
     :return dist_mat: of N by N 
     """
-    dist_mat = torch.cdist(data_mat, data_mat, p=2)
+    dist_mat = torch.cdist(data_mat, data_mat, p=2).clamp(5e-4)
     return dist_mat
 
 def _hyperbolic_pairwise_dist(data_mat, c=1, thr=0.9):
@@ -76,7 +76,7 @@ def _hyperbolic_pairwise_dist(data_mat, c=1, thr=0.9):
         (
             2 * c * euclidean_dist_mat ** 2 / denom
         ).clamp(min=1e-7)  # * note that the gradient of arcsinh could only be computed when input is larger than 1 + 1e-7
-    )
+    )# .clamp(0.1)
     return dist_mat
 
 def _diameter(emb_dists):
@@ -125,18 +125,52 @@ def _individual_distortion_loss(emb_dists, real_dists):
     
     average of the average distortion 
     """
-    
+    # ! temporary !
     n = real_dists.shape[0]
     pairwise_contraction = real_dists / (emb_dists + Constants.eta)
     pairwise_expansion = emb_dists / (real_dists + Constants.eta)
+    pairwise_contraction.fill_diagonal_(0)
     pairwise_expansion.fill_diagonal_(0)
-    
+
+    # print(torch.max(pairwise_contraction))
+    # print(torch.max(pairwise_expansion))
+
     # compute individual
     individual_pairwise_contraction = pairwise_contraction.sum(axis=1) / (n - 1)
     individual_pairwise_expansion = pairwise_expansion.sum(axis=1) / (n - 1)
     individual_distortion = individual_pairwise_contraction * individual_pairwise_expansion
     
     loss =  individual_distortion.mean()
+    return loss
+
+def _modified_individual_distortion_loss(emb_dists, real_dists):
+    """ 
+    add epsilon to both the numerator and the denominator 
+    """
+    n = real_dists.shape[0]
+    pairwise_contraction = (real_dists + Constants.eta) / (emb_dists + Constants.eta)
+    pairwise_expansion = (emb_dists + Constants.eta) / (real_dists + Constants.eta)
+    pairwise_contraction.fill_diagonal_(0)
+    pairwise_expansion.fill_diagonal_(0)
+
+
+    # compute individual
+    individual_pairwise_contraction = pairwise_contraction.sum(axis=1) / (n - 1)
+    individual_pairwise_expansion = pairwise_expansion.sum(axis=1) / (n - 1)
+    individual_distortion = individual_pairwise_contraction * individual_pairwise_expansion
+    
+    loss =  individual_distortion.mean()
+    return loss
+
+def _robust_individual_distortion_loss(emb_dists, real_dists):
+    """ convert to cosh before comparision """
+    emb_dists_cosh = torch.cosh(emb_dists)
+    real_dists_cosh = torch.cosh(real_dists)
+    
+    contraction = real_dists_cosh / emb_dists_cosh 
+    expansion = emb_dists_cosh / real_dists_cosh
+
+    loss = (contraction.mean(axis=1) * expansion.mean(axis=1)).mean()
     return loss
 
 # distortion evaluations 
@@ -196,6 +230,10 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
         loss = _distortion_loss(emb_dists_selected, real_dists_selected)
     elif loss_function_type == 'individual_distortion':
         loss = _individual_distortion_loss(emb_dists, shortest_path_mat)
+    elif loss_function_type == 'modified_individual_distortion':
+        loss = _modified_individual_distortion_loss(emb_dists, shortest_path_mat)
+    elif loss_function_type == 'robust_individual_distortion':
+        loss = _robust_individual_distortion_loss(emb_dists, shortest_path_mat)
     else:
         raise NotImplementedError(f'loss function type {loss_function_type} not available')
     
@@ -212,4 +250,32 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
 
         diameter = _diameter(emb_dists_selected)
 
-    return reconstructed_data, loss, distortion_rate, max_distortion_rate, individual_distortion_rate, contractions_std, expansions_std, diameter
+    return reconstructed_data, loss, (emb_dists_selected, real_dists_selected, emb_dists)
+
+
+def metric_report(
+        emb_dists_selected, real_dists_selected,
+        emb_dists, real_dists
+    ):
+    """ report metric along training """
+    with torch.no_grad():
+        contractions = real_dists_selected / (emb_dists_selected)
+        expansions = emb_dists_selected / (real_dists_selected)
+        contractions_std = torch.std(contractions)
+        expansions_std = torch.std(expansions)
+        
+        # all candidate loss 
+        distortion_rate = _distortion_rate(contractions, expansions)
+        max_distortion_rate = _max_distortion_rate(contractions, expansions)
+        individual_distortion_rate = _individual_distortion_rate(emb_dists, real_dists)
+        relative_rate = _relative_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
+        scaled_rate = _scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
+
+        diameter = _diameter(emb_dists_selected)
+
+        return (
+            distortion_rate, individual_distortion_rate, max_distortion_rate, 
+            relative_rate, scaled_rate, 
+            contractions_std, expansions_std, 
+            diameter
+        )

@@ -115,13 +115,22 @@ class TabularEnc(Enc):
                     params.manifold, params.data_size, 
                     getattr(nn, params.nl)(), params.hidden_dims, 
                     params.num_hyperbolic_layers, params.latent_dim, c,
-                    params.no_final_lift, params.lift_type
+                    params.no_final_lift, params.lift_type,
+                    params.no_bn
                 ),
                 params
             )
         else:
             super(TabularEnc, self).__init__(
-                eval('Enc' + params.enc)(manifold, params.data_size, getattr(nn, params.nl)(), params.num_hidden_layers, params.hidden_dim, params.prior_iso),
+                eval('Enc' + params.enc)(
+                    manifold, 
+                    params.data_size, 
+                    getattr(nn, params.nl)(), 
+                    params.num_hidden_layers, 
+                    params.hidden_dim, 
+                    params.prior_iso,
+                    params.no_bn
+                ),
                 params
             )
         self.manifold = manifold

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 from numpy import prod
 from pvae.utils import Constants
 from pvae.ops.manifold_layers import GeodesicLayer, MobiusLayer, HyperbolicLayer, LogZero, ExpZero
@@ -13,7 +14,7 @@ def extra_hidden_layer(hidden_dim, non_lin):
 
 class EncLinear(nn.Module):
     """ Usual encoder """
-    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, prior_iso):
+    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, prior_iso, no_bn):
         super(EncLinear, self).__init__()
         self.manifold = manifold
         self.data_size = data_size
@@ -24,9 +25,16 @@ class EncLinear(nn.Module):
         self.fc21 = nn.Linear(hidden_dim, manifold.coord_dim)
         self.fc22 = nn.Linear(hidden_dim, manifold.coord_dim if not prior_iso else 1)
 
+        # batch normalization
+        if not no_bn:
+            self.bn = nn.BatchNorm1d(manifold.coord_dim)
+        else:
+            self.bn = nn.Identity()
+
     def forward(self, x):
         e = self.enc(x.view(*x.size()[:-len(self.data_size)], -1))
         mu = self.fc21(e)          # flatten data
+        mu = self.bn(mu)
         return mu, F.softplus(self.fc22(e)) + Constants.eta,  self.manifold
 
 
@@ -49,7 +57,7 @@ class DecLinear(nn.Module):
 
 class EncWrapped(nn.Module):
     """ Usual encoder followed by an exponential map """
-    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, prior_iso):
+    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, prior_iso, no_bn):
         super(EncWrapped, self).__init__()
         self.manifold = manifold
         self.data_size = data_size
@@ -60,9 +68,16 @@ class EncWrapped(nn.Module):
         self.fc21 = nn.Linear(hidden_dim, manifold.coord_dim)
         self.fc22 = nn.Linear(hidden_dim, manifold.coord_dim if not prior_iso else 1)
 
+        # batch norm
+        if not no_bn:
+            self.bn = nn.BatchNorm1d(manifold.coord_dim)
+        else:
+            self.bn = nn.Identity()
+
     def forward(self, x):
         e = self.enc(x.view(*x.size()[:-len(self.data_size)], -1))
         mu = self.fc21(e)          # flatten data
+        mu = self.bn(mu)           # batchnorm before lifting 
         mu = self.manifold.expmap0(mu)
         return mu, F.softplus(self.fc22(e)) + Constants.eta,  self.manifold
 
@@ -88,7 +103,7 @@ class DecWrapped(nn.Module):
 
 class EncWrappedAlt(nn.Module):
     """ alternative encoder of EncWrapped: MLP folled by an custom map """
-    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, prior_iso):
+    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, prior_iso, no_bn):
         super(EncWrappedAlt, self).__init__()
         self.manifold = manifold
         self.data_size = data_size
@@ -99,16 +114,23 @@ class EncWrappedAlt(nn.Module):
         self.fc21 = nn.Linear(hidden_dim, manifold.coord_dim)
         self.fc22 = nn.Linear(hidden_dim, manifold.coord_dim if not prior_iso else 1)
 
+        # batch norm
+        if not no_bn:
+            self.bn = nn.BatchNorm1d(manifold.coord_dim)
+        else:
+            self.bn = nn.Identity()
+
     def forward(self, x):
         e = self.enc(x.view(*x.size()[:-len(self.data_size)], -1))
         mu = self.fc21(e)                   # flatten data
+        mu = self.bn(mu)                    # batchnormalization before lifting 
         mu = self.manifold.direct_map(mu)   # the only difference with EncWrapped
         return mu, F.softplus(self.fc22(e)) + Constants.eta,  self.manifold
 
 
 class EncWrappedSinhAlt(nn.Module):
     """ alternative encoder of EncWrapped: MLP followed by sinh and a direct map """
-    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, prior_iso):
+    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, prior_iso, no_bn):
         super(EncWrappedSinhAlt, self).__init__()
         self.manifold = manifold
         self.data_size = data_size
@@ -118,6 +140,12 @@ class EncWrappedSinhAlt(nn.Module):
         self.enc = nn.Sequential(*modules)
         self.fc21 = nn.Linear(hidden_dim, manifold.coord_dim)
         self.fc22 = nn.Linear(hidden_dim, manifold.coord_dim if not prior_iso else 1)
+
+        # batch norm 
+        if not no_bn:
+            self.bn = nn.BatchNorm1d(manifold.coord_dim)
+        else:
+            self.bn = nn.Identity()
 
     def forward(self, x):
         e = self.enc(x.view(*x.size()[:-len(self.data_size)], -1))
@@ -133,7 +161,8 @@ class EncMixture(nn.Module):
             manifold_type, 
             data_size, non_lin, hidden_dims, num_hyperbolic_layers, latent_dim, 
             c,
-            no_final_lift, lift_type
+            no_final_lift, lift_type,
+            no_bn
         ):
         super(EncMixture, self).__init__()
         self.manifold_type = manifold_type
@@ -149,6 +178,12 @@ class EncMixture(nn.Module):
 
         # construct two sets of layers 
         self.euclidean_layers, self.bridge_map, self.hyperbolic_layers = self.get_layers()
+
+        # batchnormalization 
+        if not no_bn:
+            self.bn = nn.BatchNorm1d(latent_dim)
+        else:
+            self.bn = nn.Identity()
     
     def get_layers(self):
         """ create euclidean and hyperbolic layers """
@@ -190,6 +225,7 @@ class EncMixture(nn.Module):
     
     def forward(self, x):
         euclidean_out = self.euclidean_layers(x.view(*x.size()[:-len(self.data_size)], -1))
+        euclidean_out = self.bn(euclidean_out) # bn before lifting 
         lifted_out = self.bridge_map(euclidean_out)
         hyperbolic_out = self.hyperbolic_layers(lifted_out)
         return hyperbolic_out, None, None

@@ -35,14 +35,6 @@ class PoincareBall(PoincareBallParent):
         return _lambda_x(x, -self.c, keepdim=keepdim, dim=dim) ** 2 * (u * v).sum(
             dim=dim, keepdim=keepdim
         )
-    
-    # * most implementation is off by a factor of 2 
-    # override
-    def expmap0(self, x):
-        """ a corrected version of exponential map at 0 """
-        x_norm = torch.linalg.norm(x, dim=1, keepdim=True)
-        x_mapped = torch.tanh(torch.sqrt(self.c) * x_norm / 2) * x / (torch.sqrt(self.c) * x_norm.clamp_min(MIN_NORM))
-        return x_mapped
 
     def expmap_polar(self, x, u, r, dim: int = -1):
         sqrt_c = self.c ** 0.5

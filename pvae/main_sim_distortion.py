@@ -82,7 +82,7 @@ parser.add_argument('--output-dim', type=int, default=None,
                     help='output dimension, just for distortion simulation (if None, output = input)')
 parser.add_argument('--nl', type=str, default='ReLU', help='non linearity')
 parser.add_argument('--enc', type=str, default='Wrapped', help='allow to choose different implemented encoder',
-                    choices=['Linear', 'Wrapped', 'WrappedNaive', 'WrappedAlt', 'WrappedSinhAlt', 'Mixture'])
+                    choices=['Linear', 'Wrapped', 'WrappedNaive', 'WrappedAlt', 'WrappedSinhAlt', 'Mixture', 'WrappedNaive'])
 parser.add_argument('--dec', type=str, default='Wrapped', help='allow to choose different implemented decoder',
                     choices=['Linear', 'Wrapped', 'Geo', 'Mob', 'LinearSim', 'WrappedSim', 'GeoSim', 'MobSim'])
 

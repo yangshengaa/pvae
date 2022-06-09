@@ -100,6 +100,37 @@ class DecWrapped(nn.Module):
         mu = self.fc31(d).view(*z.size()[:-1], *self.data_size)  # reshape data
         return mu, torch.ones_like(mu)
 
+class EncWrappedNaive(nn.Module):
+    """ immediate lifting """
+    def __init__(self, manifold, data_size, non_lin, num_hidden_layers, hidden_dim, prior_iso, no_bn):
+        super(EncWrappedNaive, self).__init__()
+        self.manifold = manifold
+        self.data_size = data_size
+        self.initalized = False
+
+        # batch norm
+        if not no_bn:
+            self.bn = nn.BatchNorm1d(manifold.coord_dim)
+        else:
+            self.bn = nn.Identity()
+    
+    def forward(self, x):
+        # x = x.view(*x.size()[:-len(self.data_size)], -1)
+        # init 
+        if not self.initalized:
+            num_obs, dim = x.shape
+            self.embeddings = nn.Embedding(num_obs, dim)
+            self.index_tensor = torch.LongTensor(range(num_obs))
+            self.embeddings.weight = nn.Parameter(x)  # init weights of embeddings 
+            self.initalized = True 
+        
+        # forward 
+        mu = self.embeddings(self.index_tensor)
+        # print(mu)
+        mu = self.bn(mu)
+        mu = self.manifold.expmap0(mu)
+        return mu, 0, 0
+
 
 class EncWrappedAlt(nn.Module):
     """ alternative encoder of EncWrapped: MLP folled by an custom map """
@@ -181,7 +212,7 @@ class EncMixture(nn.Module):
 
         # batchnormalization 
         if not no_bn:
-            self.bn = nn.BatchNorm1d(latent_dim)
+            self.bn = nn.BatchNorm1d(self.dims_list[self.num_euclidean_layers])
         else:
             self.bn = nn.Identity()
     

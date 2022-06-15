@@ -63,7 +63,7 @@ parser.add_argument('--lr', type=float, default=1e-4,
 parser.add_argument('--use-euclidean',  action='store_true', default=False,
                     help='use hyperbolic or euclidean distance for outputs, default=False')
 parser.add_argument('--loss-function', help='type of loss function', default='scaled', type=str, 
-                    choices=['raw', 'relative', 'scaled', 'distortion', 'individual_distortion', 'modified_individual_distortion', 'robust_individual_distortion'])
+                    choices=['raw', 'relative', 'scaled', 'robust_scaled', 'distortion', 'individual_distortion', 'modified_individual_distortion', 'robust_individual_distortion'])
 
 ### Model
 parser.add_argument('--latent-dim', type=int, default=10,

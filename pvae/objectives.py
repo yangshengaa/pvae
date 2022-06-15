@@ -114,6 +114,10 @@ def _scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected):
     )
     return loss
 
+def _robust_scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected):
+    """ convert to cosh before computing the scaled loss """
+    return _scaled_pairwise_dist_loss(torch.cosh(emb_dists_selected), torch.cosh(real_dists_selected))
+
 def _distortion_loss(emb_dists_selected, real_dists_selected):
     """ directly use average distortion as the loss """
     loss = torch.mean(emb_dists_selected / (real_dists_selected)) * torch.mean(real_dists_selected / (emb_dists_selected))
@@ -225,6 +229,8 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
         loss = _relative_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
     elif loss_function_type == 'scaled':
         loss = _scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
+    elif loss_function_type == 'robust_scaled':
+        loss = _robust_scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
     elif loss_function_type == 'distortion':
         loss = _distortion_loss(emb_dists_selected, real_dists_selected)
     elif loss_function_type == 'individual_distortion':

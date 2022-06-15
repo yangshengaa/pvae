@@ -4,7 +4,11 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 from numpy import prod
 from pvae.utils import Constants
-from pvae.ops.manifold_layers import GeodesicLayer, MobiusLayer, HyperbolicLayer, LogZero, ExpZero
+from pvae.ops.manifold_layers import (
+    GeodesicLayer, GeodesicLayerExpMap0, GeodesicLayerSinhAlt, GeodesicLayerAlt,
+    HyperbolicLayerWrapped, HyperbolicLayerWrappedAlt, HyperbolicLayerWrappedSinhAlt,
+    MobiusLayer, LogZero, ExpZero
+)
 
 from pvae import manifolds
 
@@ -242,11 +246,18 @@ class EncMixture(nn.Module):
         else:
             raise NotImplementedError(f'lifting type {self.lift_type} not supported')
 
+        # select hyperbolic layer 
+        if self.lift_type == 'expmap':
+            hyperbolic_layer = HyperbolicLayerWrapped
+        elif self.lift_type == 'direct':
+            hyperbolic_layer = HyperbolicLayerWrappedAlt
+        elif self.lift_type == 'sinh_direct':
+            hyperbolic_layer = HyperbolicLayerWrappedSinhAlt
         # construct hyperbolic layers
         for i in range(k, k + l):
             cur_dim = self.dims_list[i]
             cur_manifold = getattr(manifolds, self.manifold_type)(cur_dim, self.c)
-            hyperbolic_layers_list.append(HyperbolicLayer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold))
+            hyperbolic_layers_list.append(hyperbolic_layer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold))
         
         # final packing 
         euclidean_layers = nn.Sequential(*euclidean_layers_list)

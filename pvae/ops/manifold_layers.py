@@ -34,6 +34,21 @@ class RiemannianLayer(nn.Module):
         return self.manifold.transp0(self.bias, self._weight) # weight \in T_0 => weight \in T_bias
 
     @property
+    def weight_expmap0(self):
+        weight = self.manifold.expmap0(self._weight)
+        return self.manifold.transp0(self.bias, weight)
+    
+    @property
+    def weight_alt(self):
+        weight = self.manifold.direct_map(self._weight)
+        return self.manifold.transp0(self.bias, weight)
+    
+    @property
+    def weight_sinhalt(self):
+        weight = self.manifold.sinh_direct_map(self._weight)
+        return self.manifold.transp0(self.bias, weight)
+
+    @property
     def bias(self):
         if self.over_param:
             return self._bias
@@ -55,19 +70,68 @@ class GeodesicLayer(RiemannianLayer):
 
     def forward(self, input):
         input = input.unsqueeze(-2).expand(*input.shape[:-(len(input.shape) - 2)], self.out_features, self.in_features)
-        res = self.manifold.normdist2plane(input, self.bias, self.weight,
-                                               signed=True, norm=self.weight_norm)
+        res = self.manifold.normdist2plane(input, self.bias, self.weight, signed=True, norm=self.weight_norm)
+        return res
+
+# === variations of geodesic layers to bypass riemannian adam
+class GeodesicLayerExpMap0(RiemannianLayer):
+    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False):
+        super(GeodesicLayerExpMap0, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
+
+    def forward(self, input):
+        input = input.unsqueeze(-2).expand(-1, self.out_features, self.in_features)
+        res = self.manifold.normdist2plane(input, self.bias, self.weight_expmap0, signed=True, norm=self.weight_norm)
+        return res
+
+class GeodesicLayerAlt(RiemannianLayer):
+    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False):
+        super(GeodesicLayerAlt, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
+
+    def forward(self, input):
+        input = input.unsqueeze(-2).expand(-1, self.out_features, self.in_features)
+        res = self.manifold.normdist2plane(input, self.bias, self.weight_alt, signed=True, norm=self.weight_norm)
+        return res
+
+class GeodesicLayerSinhAlt(RiemannianLayer):
+    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False):
+        super(GeodesicLayerSinhAlt, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
+
+    def forward(self, input):
+        input = input.unsqueeze(-2).expand(-1, self.out_features, self.in_features)
+        res = self.manifold.normdist2plane(input, self.bias, self.weight_sinhalt, signed=True, norm=self.weight_norm)
         return res
 
 
-class HyperbolicLayer(RiemannianLayer):
+class HyperbolicLayerWrapped(RiemannianLayer):
     """ hyperbolic layer: geodesic + sinh + direct map """
     def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False):
-        super(HyperbolicLayer, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
+        super(HyperbolicLayerWrapped, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
     
     def forward(self, input):
-        input = input.unsqueeze(-2).expand(-1, self.out_features, self.in_features)  # * only written for encoder to use 
-        euclidean_features = self.manifold.normdist2plane(input, self.bias, self.weight, signed=True, norm=self.weight_norm)
+        input = input.unsqueeze(-2).expand(-1, self.out_features, self.in_features)  
+        euclidean_features = self.manifold.normdist2plane(input, self.bias, self.weight_expmap0, signed=True, norm=self.weight_norm)
+        res = self.manifold.expmap0(euclidean_features)
+        return res
+
+class HyperbolicLayerWrappedAlt(RiemannianLayer):
+    """ hyperbolic layer: geodesic + sinh + direct map """
+    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False):
+        super(HyperbolicLayerWrappedAlt, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
+    
+    def forward(self, input):
+        input = input.unsqueeze(-2).expand(-1, self.out_features, self.in_features)  
+        euclidean_features = self.manifold.normdist2plane(input, self.bias, self.weight_alt, signed=True, norm=self.weight_norm)
+        res = self.manifold.direct_map(euclidean_features)
+        return res
+
+class HyperbolicLayerWrappedSinhAlt(RiemannianLayer):
+    """ hyperbolic layer: geodesic + sinh + direct map """
+    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False):
+        super(HyperbolicLayerWrappedSinhAlt, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
+    
+    def forward(self, input):
+        input = input.unsqueeze(-2).expand(-1, self.out_features, self.in_features) 
+        euclidean_features = self.manifold.normdist2plane(input, self.bias, self.weight_sinhalt, signed=True, norm=self.weight_norm)
         res = self.manifold.sinh_direct_map(euclidean_features)
         return res
 

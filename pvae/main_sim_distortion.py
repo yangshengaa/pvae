@@ -217,7 +217,7 @@ def train(epoch, agg):
     model.train()
     b_loss = 0.
     for _, (data, _) in enumerate(overall_loader):  # no train test split needed, yet  
-        data = data.to(device)
+        # data = data.to(device)
         optimizer.zero_grad()
         (
             reconstructed_data, 

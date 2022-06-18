@@ -144,8 +144,10 @@ class SimTreeDistortionFromFile(TabularEnc):
     
     def getDataLoaders(self, batch_size, shuffle, device, *args):
         """ return an additional shortest path dict for loss tuning """
-        kwargs = {'num_workers': 1, 'pin_memory': True} if device == "cuda" else {}
+        # kwargs = {'num_workers': 1, 'pin_memory': True} if device == "cuda" else {}
+        kwargs = {}
         print('Load training data...')
         dataset = SyntheticTreeDistortionDataSetFromFile(*args)
+        dataset.data = dataset.data.to(device)  # load all to gpu 
         overall_loader = DataLoader(dataset, batch_size=len(dataset), drop_last=False, shuffle=False, **kwargs)  # for overall distortion
         return overall_loader, dataset.shortest_path_mat

@@ -149,5 +149,6 @@ class SimTreeDistortionFromFile(TabularEnc):
         print('Load training data...')
         dataset = SyntheticTreeDistortionDataSetFromFile(*args)
         dataset.data = dataset.data.to(device)  # load all to gpu 
+        dataset.labels = dataset.labels.to(device)
         overall_loader = DataLoader(dataset, batch_size=len(dataset), drop_last=False, shuffle=False, **kwargs)  # for overall distortion
         return overall_loader, dataset.shortest_path_mat

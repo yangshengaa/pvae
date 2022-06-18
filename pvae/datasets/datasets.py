@@ -152,8 +152,8 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
         # construct tree 
         self.sim_data_points, self.shortest_path_mat = self.read_tree_data()
 
-        self.data = torch.tensor(self.sim_data_points)
-        self.labels = np.array([range(len(self.data))]).T
+        self.data = torch.tensor(self.sim_data_points).float()
+        self.labels = torch.tensor(np.array([range(len(self.data))]).T)
 
     def __len__(self):
         return len(self.data)
@@ -161,7 +161,7 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
     def __getitem__(self, index):
         data = self.data[index]
         label = self.labels[index]
-        return torch.Tensor(data), torch.Tensor(label)
+        return data, label # torch.Tensor(data), torch.Tensor(label)
 
     # ----- util ------
     def read_tree_data(self):

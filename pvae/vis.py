@@ -66,7 +66,7 @@ def visualize_embeddings(trained_emb, edges, model_type, loss, diameter, thr):
 
     # visualize hard boundary 
     t = np.linspace(0, 2 * np.pi, 100)
-    ax.plot(0.99 * np.cos(t), thr * np.sin(t), linewidth=1, color='darkred')
+    ax.plot(thr * np.cos(t), thr * np.sin(t), linewidth=1, color='darkred')
 
     return fig
 

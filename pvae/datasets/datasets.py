@@ -152,7 +152,7 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
         # construct tree 
         self.sim_data_points, self.shortest_path_mat = self.read_tree_data()
 
-        self.data = self.sim_data_points
+        self.data = torch.tensor(self.sim_data_points)
         self.labels = np.array([range(len(self.data))]).T
 
     def __len__(self):

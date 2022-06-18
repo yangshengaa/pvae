@@ -69,7 +69,7 @@ parser.add_argument('--loss-function', help='type of loss function', default='sc
 parser.add_argument('--latent-dim', type=int, default=10,
                     metavar='L', help='latent dimensionality (default: 10)')
 parser.add_argument('--c', type=float, default=1., help='curvature')
-parser.add_argument('--thr', type=float, default=0.99, help='hard boundary of Poincare Ball')
+parser.add_argument('--thr', type=float, default=0.99, help='relative hard boundary of Poincare Ball')
 parser.add_argument('--posterior', type=str, default='WrappedNormal', help='posterior distribution',
                     choices=['WrappedNormal', 'RiemannianNormal', 'Normal'])
 
@@ -165,7 +165,8 @@ shortest_path_mat = shortest_path_mat.to(device)
 # parameters for ae objectives 
 use_hyperbolic = False if args.use_euclidean else True
 args.use_hyperbolic = use_hyperbolic
-thr = args.thr
+max_radius = np.sqrt(1 / args.c)
+thr = args.thr * max_radius  # absolute scale hard boundary
 # use_hyperbolic = False
 curvature = torch.Tensor([args.c]).to(device)
 loss_function_type = args.loss_function

@@ -131,6 +131,7 @@ parser.add_argument('--save-each-epoch', action='store_true', default=False,
                     help='whether to record statistics of each epoch')
 parser.add_argument('--record-name', type=str, default='',
                     help='the name of the record file')
+parser.add_argument('--model-save-dir', type=str, default='results', help='the path to store model pt and emb vis')
 
 
 args = parser.parse_args()
@@ -201,7 +202,7 @@ if args.log_train:
             args.epochs
         )
         model_save_dir_name += '_bn' if not args.no_bn else ''
-    model_save_dir = os.path.join('results', model_save_dir_name)
+    model_save_dir = os.path.join(args.model_save_dir, model_save_dir_name)
 
     # load edges and color encoding 
     with open(os.path.join('data', args.data_params[0], 'sim_tree_edges.npy'), 'rb') as f:

@@ -70,6 +70,74 @@ def visualize_embeddings(trained_emb, edges, model_type, loss, diameter, thr):
 
     return fig
 
+def visualize_train_test_embeddings(
+        model_type,
+        train_emb, train_edges, train_loss, train_diameter, 
+        test_emb, test_edges, test_loss, test_diameter,
+        thr
+    ):
+    """ 
+    plot train test embeddings, along with the hard boundary
+    """
+    # build graph        
+    train_g = nx.Graph()
+    train_g.add_edges_from(train_edges)
+    test_g = nx.Graph()
+    test_g.add_edges_from(test_edges)
+
+    # node colors 
+    # ! fixed for now
+    train_node_colors = []
+    train_root = np.min(train_g.nodes())  # smallest index as root 
+    # print(train_edges)
+    # print(train_g.nodes())
+    for node in (list(train_g.nodes())):
+        path_length = nx.shortest_path_length(train_g, node, train_root)
+        train_node_colors.append(1 - path_length / 10)
+    test_node_colors = []
+    test_root = np.min(test_g.nodes())
+    for node in (list(test_g.nodes())):
+        path_length = nx.shortest_path_length(test_g, node, test_root)
+        test_node_colors.append(1 - path_length / 10)
+
+    # read node embeddings 
+    fig, ax = plt.subplots(1, 2, figsize=(13, 6))
+    # ax = fig.gca()
+    draw_kwargs = {'node_size': 15, 'width': 0.1, 'cmap': 'Blues'}
+
+    # draw train 
+    train_nodes_idx = sorted(list(train_g.nodes()))
+    nx.draw(
+        train_g, 
+        pos=dict(zip(train_nodes_idx, train_emb)),
+        node_color=train_node_colors,
+        ax=ax[0],
+        **draw_kwargs
+    )
+    ax[0].scatter([train_emb[0][0]], [train_emb[0][1]], color='red')
+    ax[0].set_title('train {} \n loss: {:.4f}, diameter: {:.2f}'.format(model_type, train_loss, train_diameter))
+
+    # visualize hard boundary 
+    t = np.linspace(0, 2 * np.pi, 100)
+    ax[0].plot(thr * np.cos(t), thr * np.sin(t), linewidth=1, color='darkred')
+
+    # draw test 
+    test_nodes_idx = sorted(list(test_g.nodes()))
+    nx.draw(
+        test_g, 
+        pos=dict(zip(test_nodes_idx, test_emb)),
+        node_color=test_node_colors,
+        ax=ax[1],
+        **draw_kwargs
+    )
+    ax[1].scatter([test_emb[0][0]], [test_emb[0][1]], color='red')
+    ax[1].set_title('test {} \n loss: {:.4f}, diameter: {:.2f}'.format(model_type, test_loss, test_diameter))
+
+    # visualize hard boundary 
+    ax[1].plot(thr * np.cos(t), thr * np.sin(t), linewidth=1, color='darkred')   
+
+    return fig
+
 def convert_fig_to_array(fig):
     """ convert a matplotlib fig to numpy array (H, W, C) """
     canvas = FigureCanvas(fig)

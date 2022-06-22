@@ -145,9 +145,11 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
     """alternative to the above, read from file """
     def __init__(
         self, 
-        folder_name: str
+        folder_name: str,
+        train_test_suffix: str=''
     ) -> None:
         self.path = folder_name
+        self.train_test_suffix = train_test_suffix
 
         # construct tree 
         self.sim_data_points, self.shortest_path_mat = self.read_tree_data()
@@ -170,11 +172,11 @@ class SyntheticTreeDistortionDataSetFromFile(torch.utils.data.Dataset):
         data_path = os.path.join('data', self.path)
 
         # read data points 
-        with open(os.path.join(data_path, 'sim_tree_points.npy'), 'rb') as f:
+        with open(os.path.join(data_path, f'sim_tree_points_{self.train_test_suffix}.npy'), 'rb') as f:
             sim_data_points = np.load(f)
         
         # read mat 
-        with open(os.path.join(data_path, 'sim_tree_dist_mat.npy'), 'rb') as f:
+        with open(os.path.join(data_path, f'sim_tree_dist_mat_{self.train_test_suffix}.npy'), 'rb') as f:
             shortest_path_mat = np.load(f)
         shortest_path_mat = torch.Tensor(shortest_path_mat)
 

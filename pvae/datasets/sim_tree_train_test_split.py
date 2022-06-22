@@ -56,13 +56,12 @@ def sample_from_sim_tree(
         attr_dict[(n1_idx, n2_idx)] = dist 
     nx.set_edge_attributes(g, attr_dict, 'dist')
 
-    cur_num_points = len(edges)
+    cur_num_points = len(nodes_positions)
     sampled_point_idx = cur_num_points
 
 
     # sample from edge 
     new_sampled_positions = []
-    new_edge_list = []
     edges_copy = edges.copy()
     np.random.shuffle(edges_copy)
     edge_idx = 0
@@ -82,32 +81,45 @@ def sample_from_sim_tree(
         sampled_points = n1 + sampled_positions_proportion @ np.array([direction_vector])
 
         # append to graph 
-        cur_proportion = 0
-        cur_idx = n1_idx
-        for i, sampled_point in enumerate(sampled_points):
-            cur_diff_proportion = sampled_positions_proportion[i][0] - cur_proportion
-            g.add_edge(cur_idx, sampled_point_idx, dist=cur_diff_proportion * edge_dist)
-            new_edge_list.append((cur_idx, sampled_point_idx))
-            # update 
+        g.remove_edge(n1_idx, n2_idx)
+        for sampled_point in sampled_points:
             new_sampled_positions.append(sampled_point)
-            cur_idx = sampled_point_idx
-            sampled_point_idx += 1
-            cur_proportion = sampled_positions_proportion[i][0] 
-        # connect to n2 
-        cur_diff_proportion = 1 - sampled_positions_proportion[-1][0]
-        g.add_edge(cur_idx, n2_idx, dist=cur_diff_proportion * edge_dist)
-        new_edge_list.append((cur_idx, n2_idx))
+        proportion_list = [0, *sampled_positions_proportion, 1]
+        diff_proportion_list = np.diff(proportion_list)
+        sampled_points = [n1, *sampled_points, n2]  # append to front and end 
+        sampled_points_idx = [n1_idx, *range(sampled_point_idx, sampled_point_idx + num_points_cur_edge), n2_idx]
+        sampled_point_idx += num_points_cur_edge
+        for i in range(1, len(sampled_points)):
+            g.add_edge(
+                sampled_points_idx[i - 1],
+                sampled_points_idx[i],
+                dist=diff_proportion_list[i - 1] * edge_dist
+            )
+            
 
         # move to next edge 
         edge_idx += 1
     
     new_sampled_positions = np.vstack(new_sampled_positions)
-    new_edge_list = np.array(new_edge_list)
-    
+    # new_edge_list = np.array(new_edge_list)
+
+    # ensure connectedness 
+    leaves_candidate = [idx for idx in g.nodes() if len(list(g.neighbors(idx))) == 1 and list(g.neighbors(idx))[0] < cur_num_points]
+    while leaves_candidate: 
+        for leaf in leaves_candidate:
+            # print(leaf)
+            g.remove_edge(leaf, list(g.neighbors(leaf))[0])
+        # update leaf 
+        leaves_candidate = [idx for idx in g.nodes() if len(list(g.neighbors(idx))) == 1 and list(g.neighbors(idx))[0] < cur_num_points]
+
+    new_edges = np.array(list(g.edges()))
+
     # compute distance matrix 
-    unique_idx = np.unique(new_edge_list.flatten())
+    unique_idx = np.unique(new_edges.flatten())
+    unique_idx.sort()
     dist_mat_shape = len(unique_idx)
 
+    # conxtruct matrix
     new_dist_mat = np.zeros((dist_mat_shape, dist_mat_shape))
     triu_indices = np.triu_indices_from(new_dist_mat, k=1)
 
@@ -119,7 +131,7 @@ def sample_from_sim_tree(
     total_posisitons = np.vstack((nodes_positions, new_sampled_positions))
     total_sampled_positions = total_posisitons[unique_idx]
 
-    return total_sampled_positions, new_edge_list, new_dist_mat
+    return total_sampled_positions, new_edges, new_dist_mat
 
 
 def visualize_train_test(

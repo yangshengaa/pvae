@@ -19,12 +19,15 @@ from geoopt import optim as geo_optim
 # load files 
 sys.path.append(".")
 sys.path.append("..")
-from utils import Logger, Timer, save_model, save_vars, probe_infnan
+from utils import Logger, Timer, save_model, save_vars, probe_infnan, load_config
 from objectives import ae_pairwise_dist_objective, metric_report
 import models
 from vis import convert_fig_to_array, visualize_embeddings
 
 torch.backends.cudnn.benchmark = True
+
+# load path config 
+path_config = load_config()
 
 parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
@@ -32,7 +35,6 @@ parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 # * kept for future development 
 
 ### General
-parser.add_argument('--save-dir', type=str, default='')
 parser.add_argument('--model', type=str, metavar='M', help='model name')
 parser.add_argument('--manifold', type=str, default='PoincareBall',
                     choices=['Euclidean', 'PoincareBall'])
@@ -158,7 +160,7 @@ else:
 # =============================================================
 # load data
 overall_loader, shortest_path_mat = model.getDataLoaders(
-    args.batch_size, True, device, *args.data_params
+    args.batch_size, True, device, *args.data_params, path_config['dataset_root']
 )
 loss_function = ae_pairwise_dist_objective  
 shortest_path_mat = shortest_path_mat.to(device)
@@ -202,10 +204,10 @@ if args.log_train:
             args.epochs
         )
         model_save_dir_name += '_bn' if not args.no_bn else ''
-    model_save_dir = os.path.join(args.model_save_dir, model_save_dir_name)
+    model_save_dir = os.path.join(path_config['model_save_dir'], model_save_dir_name)
 
     # load edges and color encoding 
-    with open(os.path.join('data', args.data_params[0], 'sim_tree_edges.npy'), 'rb') as f:
+    with open(os.path.join(path_config['dataset_root'], args.data_params[0], 'sim_tree_edges.npy'), 'rb') as f:
         edges = np.load(f)
 
     # TODO: make and load color encoding 
@@ -337,7 +339,7 @@ def record_info(agg):
     #     individual_distortion_report = basic_params + ','.join([f"{agg['individual_distortion'][i]:.5f}" for i in range(len(agg['individual_distortion']))])
 
     # write to file 
-    sim_record_path = 'experiments'
+    sim_record_path = path_config['sim_record_path']
     cluster = 0
     with open(os.path.join(sim_record_path, f'sim_records_{args.record_name}.txt' if cluster == 0 else f'sim_records_{args.record_name}_{cluster}.txt'), 'a') as f:
         f.write(main_report)

@@ -21,12 +21,15 @@ from geoopt import optim as geo_optim
 # load files 
 sys.path.append(".")
 sys.path.append("..")
-from utils import Logger, Timer, save_model, save_vars, probe_infnan
+from utils import Logger, Timer, save_model, save_vars, probe_infnan, load_config
 from objectives import ae_pairwise_dist_objective, metric_report
 import models
 from vis import convert_fig_to_array, visualize_train_test_embeddings
 
 torch.backends.cudnn.benchmark = True
+
+# path config 
+path_config = load_config(dataset_key='train_test')
 
 parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 
@@ -34,7 +37,6 @@ parser = argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter)
 # * kept for future development 
 
 ### General
-parser.add_argument('--save-dir',       type=str,   default='')
 parser.add_argument('--model',          type=str,   metavar='M',      help='model name')
 parser.add_argument('--manifold',       type=str,   default='PoincareBall',   choices=['Euclidean', 'PoincareBall'])
 parser.add_argument('--save-freq',      type=int,   default=100,      help='print objective values every value (if positive)')
@@ -130,7 +132,6 @@ parser.add_argument('--save-each-epoch', action='store_true', default=False,
                     help='whether to record statistics of each epoch')
 parser.add_argument('--record-name', type=str, default='',
                     help='the name of the record file')
-parser.add_argument('--model-save-dir', type=str, default='results', help='the path to store model pt and emb vis')
 
 
 args = parser.parse_args()
@@ -157,10 +158,10 @@ else:
 # =============================================================
 # load data
 train_loader, train_shortest_path_mat = model.getDataLoaders(
-    args.batch_size, True, device, *args.data_params, f'train_{args.train_test_index}'
+    args.batch_size, True, device, *args.data_params, path_config['dataset_root'], f'train_{args.train_test_index}'
 )
 test_loader, test_shortest_path_mat = model.getDataLoaders(
-    args.batch_size, True, device, *args.data_params, f'test_{args.train_test_index}'
+    args.batch_size, True, device, *args.data_params, path_config['dataset_root'], f'test_{args.train_test_index}'
 )
 loss_function = ae_pairwise_dist_objective  
 train_shortest_path_mat = train_shortest_path_mat.to(device)
@@ -205,12 +206,12 @@ if args.log_train:
             args.epochs
         )
         model_save_dir_name += '_bn' if not args.no_bn else ''
-    model_save_dir = os.path.join(args.model_save_dir, model_save_dir_name)
+    model_save_dir = os.path.join(path_config['model_save_dir'], model_save_dir_name)
 
     # load edges and color encoding 
-    with open(os.path.join('data', args.data_params[0], f'sim_tree_edges_train_{args.train_test_index}.npy'), 'rb') as f:
+    with open(os.path.join(path_config['dataset_root'], args.data_params[0], f'sim_tree_edges_train_{args.train_test_index}.npy'), 'rb') as f:
         train_edges = np.load(f)
-    with open(os.path.join('data', args.data_params[0], f'sim_tree_edges_test_{args.train_test_index}.npy'), 'rb') as f:
+    with open(os.path.join(path_config['dataset_root'], args.data_params[0], f'sim_tree_edges_test_{args.train_test_index}.npy'), 'rb') as f:
         test_edges = np.load(f)
 
     # TODO: make and load color encoding 
@@ -384,7 +385,7 @@ def record_info(agg):
     )
 
     # write to file 
-    sim_record_path = 'experiments'
+    sim_record_path = path_config['sim_record_path']
     cluster = 0
     with open(os.path.join(sim_record_path, f'sim_records_{args.record_name}.txt' if cluster == 0 else f'sim_records_{args.record_name}_{cluster}.txt'), 'a') as f:
         f.write(main_report)

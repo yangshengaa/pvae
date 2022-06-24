@@ -3,6 +3,11 @@ import math
 import time
 import os
 import shutil
+from typing import Dict
+
+import toml
+from pathlib import Path
+
 import torch
 import torch.distributions as dist
 from torch.autograd import Variable, Function, grad
@@ -175,3 +180,38 @@ def probe_infnan(v, name, extras={}):
 
 def has_analytic_kl(type_p, type_q):
     return (type_p, type_q) in torch.distributions.kl._KL_REGISTRY
+
+
+# ===== path config ========
+def load_config(dataset_key='simulation', verbose=False) -> Dict:
+    """Loads dictionary with path names and any other variables set through config.toml
+
+    :param verbose (bool, optional): print paths
+    :return: config: dict
+    """
+    package_dir = Path(__file__).parent.parent.absolute()
+    config_file = package_dir / "config.toml"
+    print(f'Paths are for dataset tagged: {dataset_key}')
+    if verbose:
+        print(f'package dir: {package_dir}')
+        print(f'config file: {config_file}')
+    
+    config = dict()
+    toml_dict = toml.load(config_file)
+    config.update(toml_dict[dataset_key])
+    config.update({'package_dir':package_dir, 'config_file':config_file})
+    not_found = []
+    for key in config:
+        if Path(config[key]).exists():
+            config[key] = Path(config[key])
+        elif Path(toml_dict[dataset_key]['dataset_root'] + toml_dict[dataset_key][key]).exists():
+            config[key] = Path(toml_dict[dataset_key]['dataset_root'] + toml_dict[dataset_key][key])
+        else:
+            config[key] = Path(toml_dict[dataset_key]['dataset_root'] + toml_dict[dataset_key][key])
+            not_found.append(key)
+
+    for key in not_found:
+        print(f'Did not find {key}')
+        #config.pop(key, None)
+
+    return config

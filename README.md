@@ -2,8 +2,6 @@
 
 ## Developer Log
 
-- expmap0 in geoopt maps to a point that is twice larger a distance than the norm of vector itself. This is corrected by overriding the method in Poincare Ball.
-
 ## Run Custom Simulation (Notes from Sheng Yang)
 
 To use predefined dataset, use
@@ -14,7 +12,16 @@ python3 pvae/main_sim_distortion.py --model simtreefile --manifold PoincareBall 
 
 where ```sim_tree_18``` is the folder name of the dataset.
 
-We may use ```--no-model-report``` flag to disable logging of metrics afterwards, and use ```--save-model-emb``` flag to store trained model embeddings at the end.
+Please refer to file config for more information.
+
+Additionally, a [config.toml](config.toml) is required for setting up data and logging path.
+
+```toml
+['simulation']
+dataset_root = 'data' # path to dataset 
+sim_record_dir = ..   # path to storing simulating results 
+model_save_dir = ..   # save model embedding vis path 
+```
 
 ## Original
 

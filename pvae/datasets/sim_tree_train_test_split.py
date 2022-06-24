@@ -41,11 +41,13 @@ def sample_from_sim_tree(
         nodes_positions:np.ndarray, 
         edges:np.ndarray, 
         dist_mat:np.ndarray, 
-        num_sample_points:np.ndarray
+        num_sample_points:np.ndarray,
+        use_all_edges=False
     ):
     """ 
     sample points from tree edges, linear interpolation for distance metric
     :param num_sample_points: the total number of points to sample 
+    :param use_all_edges: use all edges to generate points if True 
     """
     # construct a graph 
     g = nx.Graph()
@@ -63,17 +65,19 @@ def sample_from_sim_tree(
     # sample from edge 
     new_sampled_positions = []
     edges_copy = edges.copy()
-    np.random.shuffle(edges_copy)
+    if not use_all_edges:
+        np.random.shuffle(edges_copy)
     edge_idx = 0
     cur_num_new_points = 0
     max_points_per_edge = num_sample_points * 3 // cur_num_points  # tunnable 
-    while edge_idx < cur_num_points and cur_num_new_points < num_sample_points:
+    while edge_idx < cur_num_points - 1 and (cur_num_new_points < num_sample_points or use_all_edges):
         (n1_idx, n2_idx) = edges_copy[edge_idx]
         edge_dist = dist_mat[n1_idx, n2_idx]
         n1, n2 = nodes_positions[n1_idx], nodes_positions[n2_idx]
 
         # determine points positions 
-        num_points_cur_edge = min(np.random.randint(0, max_points_per_edge) + 1, num_sample_points - cur_num_new_points)
+        num_points_cur_edge = np.random.randint(0, max_points_per_edge) + 1
+        num_points_cur_edge = min(num_points_cur_edge, num_sample_points - cur_num_new_points) if not use_all_edges else num_points_cur_edge
         cur_num_new_points += num_points_cur_edge
         sampled_positions_proportion = np.random.uniform(0.1, 0.9, (num_points_cur_edge, 1))
         sampled_positions_proportion.sort(axis=0)
@@ -104,13 +108,14 @@ def sample_from_sim_tree(
     # new_edge_list = np.array(new_edge_list)
 
     # ensure connectedness 
-    leaves_candidate = [idx for idx in g.nodes() if len(list(g.neighbors(idx))) == 1 and list(g.neighbors(idx))[0] < cur_num_points]
-    while leaves_candidate: 
-        for leaf in leaves_candidate:
-            # print(leaf)
-            g.remove_edge(leaf, list(g.neighbors(leaf))[0])
-        # update leaf 
+    if not use_all_edges:
         leaves_candidate = [idx for idx in g.nodes() if len(list(g.neighbors(idx))) == 1 and list(g.neighbors(idx))[0] < cur_num_points]
+        while leaves_candidate: 
+            for leaf in leaves_candidate:
+                # print(leaf)
+                g.remove_edge(leaf, list(g.neighbors(leaf))[0])
+            # update leaf 
+            leaves_candidate = [idx for idx in g.nodes() if len(list(g.neighbors(idx))) == 1 and list(g.neighbors(idx))[0] < cur_num_points]
 
     new_edges = np.array(list(g.edges()))
 

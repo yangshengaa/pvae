@@ -308,3 +308,6 @@ latex_helper/
 .vscode/
 results*/*
 !results/.gitkeep
+
+# config file
+config.toml

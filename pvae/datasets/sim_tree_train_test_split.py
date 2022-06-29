@@ -69,7 +69,7 @@ def sample_from_sim_tree(
         np.random.shuffle(edges_copy)
     edge_idx = 0
     cur_num_new_points = 0
-    max_points_per_edge = num_sample_points * 3 // cur_num_points  # tunnable 
+    max_points_per_edge = 1 # num_sample_points * 3 // cur_num_points  # tunnable 
     while edge_idx < cur_num_points - 1 and (cur_num_new_points < num_sample_points or use_all_edges):
         (n1_idx, n2_idx) = edges_copy[edge_idx]
         edge_dist = dist_mat[n1_idx, n2_idx]

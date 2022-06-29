@@ -485,7 +485,7 @@ class random_rootless_tree(ConcreteSyntheticDatasetParent):
 class explicit_tree(ConcreteSyntheticDatasetParent):
     """ an explicit tree dataset """
     def make_dataset(self):
-        tree_depth = 5
+        tree_depth = 10
         root = np.array([0, tree_depth])
         max_depth = tree_depth
 

@@ -302,7 +302,7 @@ simulation*
 archive/
 pvae/make_sim_data.py
 report/
-error.txt
+error*.txt
 output.txt
 latex_helper/
 .vscode/

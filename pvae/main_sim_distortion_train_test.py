@@ -371,9 +371,9 @@ def record_info(agg):
         f'{agg["train_scaled"][-1]:.4f},' + 
         f'{agg["train_contractions_std"][-1]:.4f},' + 
         f'{agg["train_expansions_std"][-1]:.6f},' + 
-        f'{agg["train_diameter"][-1]:.2f}' + 
+        f'{agg["train_diameter"][-1]:.2f},' + 
 
-        f'{agg["train_loss"][-1]:.4f},' + 
+        f'{agg["test_loss"][-1]:.4f},' + 
         f'{agg["test_distortion"][-1]:.4f},' + 
         f'{agg["test_individual_distortion"][-1]:.4f},' + 
         f'{agg["test_max_distortion"][-1]:.3f},' + 

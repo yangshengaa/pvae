@@ -83,7 +83,10 @@ def _diameter(emb_dists):
     """ compute the diameter of the embeddings """
     return torch.max(emb_dists)
 
-# loss functions 
+# ===============================================
+# -------------- loss functions -----------------
+# ===============================================
+
 def _select_upper_triangular(emb_dists, real_dists):
     """ select the upper triangular portion of the distance matrix """
     mask = torch.triu(torch.ones_like(real_dists), diagonal=1) > 0
@@ -102,6 +105,11 @@ def _relative_pairwise_dist_loss(emb_dists_selected, real_dists_selected):
     ((d_e - d_r) / d_r) ** 2
     """ 
     loss = torch.mean((emb_dists_selected / real_dists_selected - 1) ** 2)
+    return loss 
+
+def _relative_learning_pairwise_dist_loss(emb_dists_selected, real_dists_selected, alpha: torch.nn.parameter.Parameter):
+    """ relative loss with an additional learning parameter """
+    loss = torch.mean((alpha * emb_dists_selected / real_dists_selected - 1) ** 2)
     return loss 
 
 def _scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected):
@@ -239,6 +247,8 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
         loss = _modified_individual_distortion_loss(emb_dists, shortest_path_mat)
     elif loss_function_type == 'robust_individual_distortion':
         loss = _robust_individual_distortion_loss(emb_dists, shortest_path_mat)
+    elif loss_function_type == 'learning_relative':
+        loss = _relative_learning_pairwise_dist_loss(emb_dists_selected, real_dists_selected, model.learning_alpha)
     else:
         raise NotImplementedError(f'loss function type {loss_function_type} not available')
 

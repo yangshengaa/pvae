@@ -276,7 +276,7 @@ def train(epoch, agg):
             with torch.no_grad():
                 # visualize 
                 trained_emb = reconstructed_data.cpu().numpy()  # feed back to cpu to plot 
-                fig = visualize_embeddings(trained_emb, edges, model_save_dir_name, loss, diameter, thr)
+                fig = visualize_embeddings(trained_emb, edges, model_save_dir_name, loss, diameter, thr, distortion)
                 img_arr = convert_fig_to_array(fig)
                 img_arr = torch.tensor(img_arr)
 

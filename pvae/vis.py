@@ -25,7 +25,7 @@ def array_plot(points, filepath):
     plt.clf()
 
 # ============== for simulation only ===================
-def visualize_embeddings(trained_emb, edges, model_type, loss, diameter, thr):
+def visualize_embeddings(trained_emb, edges, model_type, loss, diameter, thr, distortion):
     """ 
     plot embeddings, along with the hard boundary
 
@@ -35,6 +35,7 @@ def visualize_embeddings(trained_emb, edges, model_type, loss, diameter, thr):
     :param loss: the loss at a particular epoch,
     :param diameter: the diameter of the embedding
     :param thr: the threshold for hard boundary 
+    :param distortion: the training distortion 
     :return a fig 
     """
     # build graph        
@@ -62,7 +63,7 @@ def visualize_embeddings(trained_emb, edges, model_type, loss, diameter, thr):
         ax=ax
     )
     ax.scatter([trained_emb[0][0]], [trained_emb[0][1]], color='red')
-    ax.set_title('{} \n loss: {:.4f}, diameter: {:.2f}'.format(model_type, loss, diameter))
+    ax.set_title('{} \n loss: {:.4f}, distortion: {:.4f}, diameter: {:.4f}'.format(model_type, loss, distortion, diameter))
 
     # visualize hard boundary 
     t = np.linspace(0, 2 * np.pi, 100)
@@ -72,8 +73,8 @@ def visualize_embeddings(trained_emb, edges, model_type, loss, diameter, thr):
 
 def visualize_train_test_embeddings(
         model_type,
-        train_emb, train_edges, train_loss, train_diameter, 
-        test_emb, test_edges, test_loss, test_diameter,
+        train_emb, train_edges, train_loss, train_diameter, train_distortion,
+        test_emb, test_edges, test_loss, test_diameter, test_distoriton,
         thr
     ):
     """ 
@@ -115,7 +116,7 @@ def visualize_train_test_embeddings(
         **draw_kwargs
     )
     ax[0].scatter([train_emb[0][0]], [train_emb[0][1]], color='red')
-    ax[0].set_title('train {} \n loss: {:.4f}, diameter: {:.2f}'.format(model_type, train_loss, train_diameter))
+    ax[0].set_title('train {} \n loss: {:.4f}, distortion: {:.4f}, diameter: {:.2f}'.format(model_type, train_loss, train_distortion, train_diameter))
 
     # visualize hard boundary 
     t = np.linspace(0, 2 * np.pi, 100)
@@ -131,7 +132,7 @@ def visualize_train_test_embeddings(
         **draw_kwargs
     )
     ax[1].scatter([test_emb[0][0]], [test_emb[0][1]], color='red')
-    ax[1].set_title('test {} \n loss: {:.4f}, diameter: {:.2f}'.format(model_type, test_loss, test_diameter))
+    ax[1].set_title('test {} \n loss: {:.4f}, distorion: {:.4f}, diameter: {:.2f}'.format(model_type, test_loss, test_distoriton, test_diameter))
 
     # visualize hard boundary 
     ax[1].plot(thr * np.cos(t), thr * np.sin(t), linewidth=1, color='darkred')   

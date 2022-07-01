@@ -326,8 +326,8 @@ def train(epoch, agg):
                 test_emb = test_reconstructed_data.cpu().detach().numpy()
                 fig = visualize_train_test_embeddings(
                     model_save_dir_name,
-                    trained_emb, train_edges, b_loss, tr_diameter,
-                    test_emb, test_edges, test_b_loss, ts_diameter,
+                    trained_emb, train_edges, b_loss, tr_diameter, tr_distortion,
+                    test_emb, test_edges, test_b_loss, ts_diameter, ts_distortion,
                     thr
                 )
                 img_arr = convert_fig_to_array(fig)

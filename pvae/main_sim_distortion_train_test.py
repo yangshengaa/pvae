@@ -14,6 +14,7 @@ import numpy as np
 
 import torch
 from torch import optim
+from torch.nn.parameter import Parameter
 from torch.utils.tensorboard import SummaryWriter
 
 from geoopt import optim as geo_optim
@@ -64,7 +65,7 @@ parser.add_argument('--lr', type=float, default=1e-4,
 parser.add_argument('--use-euclidean',  action='store_true', default=False,
                     help='use hyperbolic or euclidean distance for outputs, default=False')
 parser.add_argument('--loss-function', help='type of loss function', default='scaled', type=str, 
-                    choices=['raw', 'relative', 'scaled', 'robust_scaled', 'distortion', 'individual_distortion', 'modified_individual_distortion', 'robust_individual_distortion'])
+                    choices=['raw', 'relative', 'scaled', 'robust_scaled', 'distortion', 'individual_distortion', 'modified_individual_distortion', 'robust_individual_distortion', 'learning_relative'])
 
 ### Model
 parser.add_argument('--latent-dim', type=int, default=10,
@@ -154,6 +155,12 @@ elif args.opt == 'riemannian_adam':
 else:
     raise NotImplementedError(f'optimizer {args.optimizer} not supported')
 
+# for specific loss functions, additional learning parameters need to be appended for update 
+loss_function_type = args.loss_function
+if loss_function_type == 'learning_relative':
+    alpha = Parameter(torch.tensor(1.))  # initialize to 1 
+    model.learning_alpha = alpha
+    optimizer.add_param_group({'params': alpha})
 
 # =============================================================
 # load data
@@ -174,8 +181,6 @@ max_radius = np.sqrt(1 / args.c)
 thr = args.thr * max_radius  # absolute scale hard boundary
 # use_hyperbolic = False
 curvature = torch.Tensor([args.c]).to(device)
-loss_function_type = args.loss_function
-
 
 # ===========================================================
 if args.log_train: 

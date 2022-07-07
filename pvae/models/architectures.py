@@ -197,12 +197,14 @@ class EncMixture(nn.Module):
             data_size, non_lin, hidden_dims, num_hyperbolic_layers, latent_dim, 
             c,
             no_final_lift, lift_type,
-            no_bn
+            no_bn,
+            hyp_nl
         ):
         super(EncMixture, self).__init__()
         self.manifold_type = manifold_type
         self.data_size = data_size
         self.non_lin = non_lin
+        self.hyp_nl = hyp_nl
         self.c = c
         self.no_final_lift = no_final_lift
         self.lift_type = lift_type
@@ -257,7 +259,7 @@ class EncMixture(nn.Module):
         for i in range(k, k + l):
             cur_dim = self.dims_list[i]
             cur_manifold = getattr(manifolds, self.manifold_type)(cur_dim, self.c)
-            hyperbolic_layers_list.append(hyperbolic_layer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold))
+            hyperbolic_layers_list.append(hyperbolic_layer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold, hyp_nl=self.hyp_nl))
         
         # final packing 
         euclidean_layers = nn.Sequential(*euclidean_layers_list)

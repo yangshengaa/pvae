@@ -104,39 +104,45 @@ class GeodesicLayerSinhAlt(RiemannianLayer):
 
 class HyperbolicLayerWrapped(RiemannianLayer):
     """ hyperbolic layer: geodesic + sinh + direct map """
-    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False):
+    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False, hyp_nl=nn.Identity()):
         super(HyperbolicLayerWrapped, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
         self.bn = nn.BatchNorm1d(out_features)
+        self.hyp_nl = hyp_nl
     
     def forward(self, input):
         input = input.unsqueeze(-2).expand(-1, self.out_features, self.in_features)  
         euclidean_features = self.manifold.normdist2plane(input, self.bias, self.weight_expmap0, signed=True, norm=self.weight_norm)
+        euclidean_features = self.hyp_nl(euclidean_features)
         euclidean_features_bn = self.bn(euclidean_features)
         res = self.manifold.expmap0(euclidean_features_bn)
         return res
 
 class HyperbolicLayerWrappedAlt(RiemannianLayer):
     """ hyperbolic layer: geodesic + direct map """
-    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False):
+    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False, hyp_nl=nn.Identity()):
         super(HyperbolicLayerWrappedAlt, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
         self.bn = nn.BatchNorm1d(out_features)
+        self.hyp_nl = hyp_nl
     
     def forward(self, input):
         input = input.unsqueeze(-2).expand(-1, self.out_features, self.in_features)  
         euclidean_features = self.manifold.normdist2plane(input, self.bias, self.weight_alt, signed=True, norm=self.weight_norm)
+        euclidean_features = self.hyp_nl(euclidean_features)
         euclidean_features_bn = self.bn(euclidean_features)
         res = self.manifold.direct_map(euclidean_features_bn)
         return res
 
 class HyperbolicLayerWrappedSinhAlt(RiemannianLayer):
     """ hyperbolic layer: geodesic + sinh + direct map """
-    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False):
+    def __init__(self, in_features, out_features, manifold, over_param=False, weight_norm=False, hyp_nl=nn.Identity()):
         super(HyperbolicLayerWrappedSinhAlt, self).__init__(in_features, out_features, manifold, over_param, weight_norm)
         self.bn = nn.BatchNorm1d(out_features)
+        self.hyp_nl = hyp_nl
     
     def forward(self, input):
         input = input.unsqueeze(-2).expand(-1, self.out_features, self.in_features) 
         euclidean_features = self.manifold.normdist2plane(input, self.bias, self.weight_sinhalt, signed=True, norm=self.weight_norm)
+        euclidean_features = self.hyp_nl(euclidean_features)
         euclidean_features_bn = self.bn(euclidean_features)
         res = self.manifold.sinh_direct_map(euclidean_features_bn)
         return res

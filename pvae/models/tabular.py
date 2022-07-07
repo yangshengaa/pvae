@@ -116,7 +116,8 @@ class TabularEnc(Enc):
                     getattr(nn, params.nl)(), params.hidden_dims, 
                     params.num_hyperbolic_layers, params.latent_dim, c,
                     params.no_final_lift, params.lift_type,
-                    params.no_bn
+                    params.no_bn,
+                    getattr(nn, params.hyp_nl)()
                 ),
                 params
             )

@@ -65,6 +65,19 @@ class PoincareBall(PoincareBallParent):
 
         # TODO: suggestion from Zhengchao: try <log_p x, w> 
 
+    def normdist2planePP(self, x: torch.Tensor, z: torch.Tensor, r: torch.Tensor):
+        """ hyperbolic neural network plus plus equation 6 """
+        conformal_factor = 2 / (1 - self.c * x.norm(dim=-1, keepdim=True) ** 2)
+        sqrt_c = self.c ** 0.5
+        z_norm = z.norm(dim=0, keepdim=True)
+        z_normalized = z / z_norm
+        
+        v_k = 2 / sqrt_c * z_norm * torch.arcsinh(
+            conformal_factor * (sqrt_c * x @ z_normalized) * torch.cosh(2 * sqrt_c * r) 
+            - (conformal_factor - 1) @ torch.sinh(2 * sqrt_c * r)
+        )
+        return v_k
+
     def sinh_direct_map(self, x):
         """ insert sinh before direct map, suggested by Zhengchao """
         c_sqrt = self.c.sqrt()

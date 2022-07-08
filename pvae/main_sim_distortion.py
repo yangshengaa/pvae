@@ -86,7 +86,7 @@ parser.add_argument('--output-dim', type=int, default=None,
 parser.add_argument('--nl', type=str, default='ELU', help='non linearity')
 parser.add_argument('--hyp-nl', type=str, default='ELU', help='non linearity for hyperbolic layers')
 parser.add_argument('--enc', type=str, default='Wrapped', help='allow to choose different implemented encoder',
-                    choices=['Linear', 'Wrapped', 'WrappedNaive', 'WrappedAlt', 'WrappedSinhAlt', 'Mixture', 'WrappedNaive'])
+                    choices=['Linear', 'Wrapped', 'WrappedNaive', 'WrappedAlt', 'WrappedSinhAlt', 'Mixture', 'MixturePP','WrappedNaive'])
 parser.add_argument('--dec', type=str, default='Wrapped', help='allow to choose different implemented decoder',
                     choices=['Linear', 'Wrapped', 'Geo', 'Mob', 'LinearSim', 'WrappedSim', 'GeoSim', 'MobSim'])
 
@@ -186,7 +186,7 @@ curvature = torch.Tensor([args.c]).to(device)
 if args.log_train: 
     # encode model 
     model_type = args.enc 
-    if model_type == 'Mixture':
+    if 'Mixture' in model_type:
         model_save_dir_name = '{}_{}_hd_{}_lift_{}_numhyp_{}_nofinal_{}_ld_{}_loss_{}_epochs_{}'.format(
             model_type, 
             args.data_params[0],

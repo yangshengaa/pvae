@@ -7,6 +7,7 @@ from pvae.utils import Constants
 from pvae.ops.manifold_layers import (
     GeodesicLayer, GeodesicLayerExpMap0, GeodesicLayerSinhAlt, GeodesicLayerAlt,
     HyperbolicLayerWrapped, HyperbolicLayerWrappedAlt, HyperbolicLayerWrappedSinhAlt,
+    HyperbolicLayerWrappedPP, HyperbolicLayerWrappedAltPP, HyperbolicLayerWrappedSinhAltPP,
     MobiusLayer, LogZero, ExpZero
 )
 
@@ -274,6 +275,27 @@ class EncMixture(nn.Module):
         hyperbolic_out = self.hyperbolic_layers(lifted_out)
         return hyperbolic_out, None, None
 
+class EncMixturePP(EncMixture):
+    def __init__(self, manifold_type, data_size, non_lin, hidden_dims, num_hyperbolic_layers, latent_dim, c, no_final_lift, lift_type, no_bn, hyp_nl):
+        super().__init__(manifold_type, data_size, non_lin, hidden_dims, num_hyperbolic_layers, latent_dim, c, no_final_lift, lift_type, no_bn, hyp_nl)
+
+        # replace hyperbolic layers
+        k, l = self.num_euclidean_layers, self.num_hyperbolic_layers
+        hyperbolic_layers_list = []
+        if self.lift_type == 'expmap':
+            hyperbolic_layer = HyperbolicLayerWrappedPP
+        elif self.lift_type == 'direct':
+            hyperbolic_layer = HyperbolicLayerWrappedAltPP
+        elif self.lift_type == 'sinh_direct':
+            hyperbolic_layer = HyperbolicLayerWrappedSinhAltPP
+        # construct hyperbolic layers
+        for i in range(k, k + l):
+            cur_dim = self.dims_list[i]
+            cur_manifold = getattr(manifolds, self.manifold_type)(cur_dim, self.c)
+            hyperbolic_layers_list.append(hyperbolic_layer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold, hyp_nl=self.hyp_nl))    
+        self.hyperbolic_layers = nn.Sequential(*hyperbolic_layers_list)
+
+        # the rest is the same 
 
 class DecGeo(nn.Module):
     """ First layer is a Hypergyroplane followed by usual decoder """

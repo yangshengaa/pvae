@@ -260,7 +260,8 @@ class EncMixture(nn.Module):
         for i in range(k, k + l):
             cur_dim = self.dims_list[i]
             cur_manifold = getattr(manifolds, self.manifold_type)(cur_dim, self.c)
-            hyperbolic_layers_list.append(hyperbolic_layer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold, hyp_nl=self.hyp_nl))
+            hyp_nl = self.hyp_nl if i < k + l - 1 else nn.Identity()  # no activation in the final hyperbolic layer
+            hyperbolic_layers_list.append(hyperbolic_layer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold, hyp_nl=hyp_nl))
         
         # final packing 
         euclidean_layers = nn.Sequential(*euclidean_layers_list)
@@ -292,7 +293,8 @@ class EncMixturePP(EncMixture):
         for i in range(k, k + l):
             cur_dim = self.dims_list[i]
             cur_manifold = getattr(manifolds, self.manifold_type)(cur_dim, self.c)
-            hyperbolic_layers_list.append(hyperbolic_layer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold, hyp_nl=self.hyp_nl))    
+            hyp_nl = self.hyp_nl if i < k + l - 1 else nn.Identity()  # no activation in the final hyperbolic layer
+            hyperbolic_layers_list.append(hyperbolic_layer(cur_manifold.coord_dim, self.dims_list[i + 1], cur_manifold, hyp_nl=hyp_nl))    
         self.hyperbolic_layers = nn.Sequential(*hyperbolic_layers_list)
 
         # the rest is the same 

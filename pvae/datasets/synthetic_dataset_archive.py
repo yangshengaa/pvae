@@ -14,6 +14,8 @@ from scipy.spatial.distance import cdist
 
 import networkx as nx 
 
+from sklearn.neighbors import NearestNeighbors
+
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -278,19 +280,27 @@ class simple_case(ConcreteSyntheticDatasetParent):
 
 class single_dandelion(ConcreteSyntheticDatasetParent):
     """ a single dandelion, centered at 0 """
-    def make_dataset(self):
-        num_nodes = 15
+    def make_dataset(self, d=2):
+        """
+        :param d: the number of dimensions
+        """
+        num_nodes = 100
 
         edges = []
         center_idx_list = []
         nodes_positions = []
 
         # center 1 
-        thetas = np.linspace(0, 2 * np.pi, num_nodes)
-        rhos = np.random.uniform(low=5, high=10, size=num_nodes)
+        # thetas = np.linspace(0, 2 * np.pi, num_nodes)
+        # uniform sampling on a unit sphere
+        directions = np.random.normal(0, 1, size=(num_nodes, d))
+        directions_normalized = directions / np.linalg.norm(directions, axis=1, keepdims=True)
+        rhos = np.random.uniform(low=5, high=10, size=(num_nodes, 1))
 
-        center = np.array([0, 0])
-        nodes = np.vstack((rhos * np.cos(thetas), rhos * np.sin(thetas))).T  + center
+        # center = np.array([0, 0])
+        center = np.array([0] * d)
+        # nodes = np.vstack((rhos * np.cos(thetas), rhos * np.sin(thetas))).T  + center
+        nodes = rhos * directions_normalized
 
         cur_idx = 0
         center_idx = cur_idx
@@ -485,7 +495,7 @@ class random_rootless_tree(ConcreteSyntheticDatasetParent):
 class explicit_tree(ConcreteSyntheticDatasetParent):
     """ an explicit tree dataset """
     def make_dataset(self):
-        tree_depth = 10
+        tree_depth = 5
         root = np.array([0, tree_depth])
         max_depth = tree_depth
 
@@ -603,4 +613,70 @@ class transform_dataset(ConcreteSyntheticDatasetParent):
         self.dataset.dist_mat = prev_dist_mat
 
 
+class knn_from_points(ConcreteSyntheticDatasetParent):
+    """ knn from prespecified data points """
+    def make_dataset(self, data_points, k=5):
+        n = data_points.shape[0]
+        nb = NearestNeighbors(n_neighbors=k + 1).fit(data_points)
+        edge_mat = nb.kneighbors_graph(data_points).toarray()
+        edge_mat_diag_removed = edge_mat - np.eye(n)  # remove diagonal       
+        print('find neighbors')
+        
+        # construct graph 
+        g = nx.from_numpy_array(edge_mat_diag_removed)
+        g = g.to_undirected()
+        edge_list = np.array(list(g.edges))
+        # check connectedness 
+        if not nx.is_connected(g):
+            raise Exception("G not connected, tune parameters")
+        print('graph constructed')
+        
+        # floyd-warshall algorithm
+        dist_mat = edge_mat.copy()
+        for i in range(n):
+            for j in range(n):
+                if dist_mat[i][j] == 0:
+                    dist_mat[i][j] == np.inf
+        dist_mat = dist_mat - np.eye(n)
+
+        for k in range(n):
+            for i in range(n):
+                for j in range(n):
+                    dist_mat[i][j] = min(dist_mat[i][j], dist_mat[i][k] + dist_mat[k][j])
+        print('floyd-warshall done')
+    
+        # get edge list
+        self.nodes_positions = data_points.toarray()
+        self.edge_list = edge_list
+        self.dist_mat = dist_mat
+
+    
+    def make(self):
+        path = os.path.join(DATA_PATH, self.folder_name)
+        with open(os.path.join(path, 'sim_tree_dist_mat.npy'), 'wb') as f:
+            np.save(f, self.dist_mat)
+        with open(os.path.join(path, 'sim_tree_edges.npy'), 'wb') as f:
+            np.save(f, self.edge_list)
+        with open(os.path.join(path, 'sim_tree_points.npy'), 'wb') as f:
+            np.save(f, self.nodes_positions)
+
+
 # TODO: read from file to construct a class 
+class from_folder(ConcreteSyntheticDatasetParent):
+    def make_dataset(self):
+        """ read folder """
+        path = os.path.join(DATA_PATH, self.folder_name)
+        with open(os.path.join(path, 'sim_tree_dist_mat.npy'), 'rb') as f:
+            dist_mat = np.load(f)
+        with open(os.path.join(path, 'sim_tree_edges.npy'), 'rb') as f:
+            edges = np.load(f)
+        with open(os.path.join(path, 'sim_tree_points.npy'), 'rb') as f:
+            nodes_positions = np.load(f)
+        print('finish loading')
+        self.dataset = SyntheticTreeDistortionDataSetPermute(
+            nodes_positions, edges, to_permute=False, 
+            dist_mat=dist_mat
+        )
+    
+    def make(self):
+        self.refresh_stats()

@@ -189,7 +189,8 @@ class SyntheticTreeDistortionDataSetPermute:
         permute_type: str='add_noise',
         proportion_permute: float=0.3,
         use_path_length: bool=False,
-        max_degree: int=3
+        max_degree: int=3,
+        dist_mat: np.ndarray=None
     ) -> None:
         """ 
         :param nodes_positions: the euclidean positions of the data points. Assuming indexed by 0 to len(.) - 1
@@ -199,6 +200,7 @@ class SyntheticTreeDistortionDataSetPermute:
         :param proportion_permute: proportion of points to permute. 
         :param use_path_length: whether to use path length. False to use euclidean distances, otherwise length 1
         :param max_degree: a add_noise specific parameter. Number of noise points added for a fixed point follows uniform([1, max_degree])
+        :param dist_mat: accepting precomputed distance matrix
         """
         super().__init__()
         self.nodes_positions = nodes_positions
@@ -217,9 +219,13 @@ class SyntheticTreeDistortionDataSetPermute:
         # permute if necessary 
         if self.to_permute:
             self.permute()
-
-        # compute pairwise distance 
-        self.dist_mat = self.get_dist_mat()
+            # compute pairwise distance 
+            self.dist_mat = self.get_dist_mat()
+        else:
+            if dist_mat is None:
+                self.dist_mat = self.get_dist_mat()
+            else:
+                self.dist_mat = dist_mat
     
 
     def construct_graph(self) -> nx.DiGraph:

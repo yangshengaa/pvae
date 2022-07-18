@@ -47,7 +47,7 @@ class PoincareBall(PoincareBallParent):
         gamma_1 = self.mobius_add(x, second_term, dim=dim)
         return gamma_1
 
-    def normdist2plane(self, x, a, p, keepdim: bool = False, signed: bool = False, dim: int = -1, norm: bool = False):
+    def normdist2plane(self, x, a, p, keepdim: bool = False, signed: bool = True, dim: int = -1, norm: bool = True):
         c = self.c
         sqrt_c = c ** 0.5
         diff = self.mobius_add(-p, x, dim=dim)

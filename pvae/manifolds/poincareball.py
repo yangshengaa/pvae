@@ -60,7 +60,8 @@ class PoincareBall(PoincareBallParent):
         denom = (1 - c * diff_norm2) * a_norm
         res = arsinh(num / denom.clamp_min(MIN_NORM)) / sqrt_c
         if norm:
-            res = res * a_norm# * self.lambda_x(a, dim=dim, keepdim=keepdim)
+            a_riemannian_norm = a_norm * (2 / (1 - c * p.norm(dim=dim, keepdim=True, p=2) ** 2)).T
+            res = res * a_riemannian_norm
         return res
 
         # TODO: suggestion from Zhengchao: try <log_p x, w> 
@@ -72,7 +73,7 @@ class PoincareBall(PoincareBallParent):
         z_norm = z.norm(dim=0, keepdim=True)
         z_normalized = z / z_norm
         
-        v_k = 2 / sqrt_c * z_norm * torch.arcsinh(
+        v_k = 2 / sqrt_c * z_norm * arsinh(
             conformal_factor * (sqrt_c * x @ z_normalized) * torch.cosh(2 * sqrt_c * r) 
             - (conformal_factor - 1) @ torch.sinh(2 * sqrt_c * r)
         )

@@ -63,13 +63,35 @@ class ConcreteSyntheticDatasetParent:
         contraction_std = ConcreteSyntheticDatasetParent._contraction_std(emb_dist_mat, dist_mat)
         expansion_std = ConcreteSyntheticDatasetParent._expansion_std(emb_dist_mat, dist_mat)
 
+        # masked 
+        ancestral_mask = ConcreteSyntheticDatasetParent._ancestral_mask(list(g.edges))
+        non_ancestral_mask = 1 - ancestral_mask - np.eye(ancestral_mask.shape[0], dtype=int)
+        ancestral_pair_prop = ancestral_mask.sum() / (number_of_nodes * (number_of_nodes - 1))
+        non_ancestral_pair_prop = 1 - ancestral_pair_prop
+
+        ancestral_nan_mask = ancestral_mask / ancestral_mask
+        non_ancestral_nan_mask = non_ancestral_mask / non_ancestral_mask
+
+        ancestral_average_distortion = ConcreteSyntheticDatasetParent._average_distortion(emb_dist_mat * ancestral_nan_mask, dist_mat * ancestral_nan_mask)
+        ancestral_max_distortion = ConcreteSyntheticDatasetParent._max_distortion(emb_dist_mat * ancestral_nan_mask, dist_mat * ancestral_nan_mask)
+        ancestral_individual_distortion = ConcreteSyntheticDatasetParent._individual_distortion(emb_dist_mat * ancestral_nan_mask, dist_mat * ancestral_nan_mask)
+
+        non_ancestral_average_distortion = ConcreteSyntheticDatasetParent._average_distortion(emb_dist_mat * non_ancestral_nan_mask, dist_mat * non_ancestral_nan_mask)
+        non_ancestral_max_distortion = ConcreteSyntheticDatasetParent._max_distortion(emb_dist_mat * non_ancestral_nan_mask, dist_mat * non_ancestral_nan_mask)
+        non_ancestral_individual_distortion = ConcreteSyntheticDatasetParent._individual_distortion(emb_dist_mat * non_ancestral_nan_mask, dist_mat * non_ancestral_nan_mask)
+
+
         col_names = [
             'number_of_nodes', 'number_of_edges', 'max_degree', 'mean_degree', 'std_degree',
-            'average_distortion', 'individual_distortion', 'max_distortion', 'contraction_std', 'expansion_std'
+            'average_distortion', 'individual_distortion', 'max_distortion', 'contraction_std', 'expansion_std',
+            'ancestral_pair_prop', 'ancestral_average_distortion', 'ancestral_individual_distoriton', 'ancestral_max_distortion',
+            'non_ancestral_pair_prop', 'non_ancestral_average_distortion', 'non_ancestral_individual_distoriton', 'non_ancestral_max_distortion'
         ]
         entries = [[
             number_of_nodes, number_of_edges, max_degree, mean_degree, std_degree,
-            average_distortion, individual_distortion, max_distortion, contraction_std, expansion_std
+            average_distortion, individual_distortion, max_distortion, contraction_std, expansion_std,
+            ancestral_pair_prop, ancestral_average_distortion, ancestral_individual_distortion, ancestral_max_distortion,
+            non_ancestral_pair_prop, non_ancestral_average_distortion, non_ancestral_individual_distortion, non_ancestral_max_distortion
         ]]
         cur_stats_df = pd.DataFrame(entries, columns=col_names)
         return cur_stats_df
@@ -155,7 +177,9 @@ class ConcreteSyntheticDatasetParent:
                 # append to list 
                 new_stats_df_list.append(cur_stats_df)
 
+                print('finish dataset ', dataset_folder)
             except:
+                print(dataset_folder, ' failed')
                 pass 
         
         # put back and flush 
@@ -204,9 +228,9 @@ class ConcreteSyntheticDatasetParent:
         # compute distortion
         contraction = real_dist_masked / emb_dist_masked
         expansion = emb_dist_masked / real_dist_masked
-        individual_contraction =  np.nansum(contraction, axis=1) / (n - 1)
-        individual_expansion = np.nansum(expansion, axis=1) / (n - 1)
-        individual_distortion = np.mean(individual_contraction * individual_expansion)
+        individual_contraction =  np.nansum(contraction, axis=1) / (1 - np.isnan(contraction)).sum(axis=1)
+        individual_expansion = np.nansum(expansion, axis=1) / (1 - np.isnan(expansion)).sum(axis=1)
+        individual_distortion = np.nanmean(individual_contraction * individual_expansion)
 
         return individual_distortion
 
@@ -257,6 +281,43 @@ class ConcreteSyntheticDatasetParent:
         expansion_std = np.nanstd(expansion.flatten())
 
         return expansion_std
+
+    @staticmethod
+    def _ancestral_mask(edges, root=0):
+        """ create ancestral mask """
+        n = len(edges) + 1  # assuming a tree 
+        # make directed 
+        edges_directed = sorted(list(set([(min(n1, n2), max(n1, n2)) for n1, n2 in edges])), key=lambda x: (x[0], x[1]))
+        edges_dict = {}
+        for i in range(n):
+            connected_to = [n2 for n1, n2 in edges_directed if n1 == i]
+            edges_dict[i] = connected_to
+        
+        mask = np.zeros((n, n), dtype=int)
+
+        def helper(root: int):
+            children = edges_dict[root]
+            # along length one edges 
+            if len(children) == 1:
+                cur = children[0]
+                children_list = [root, cur]
+                while len(edges_dict[cur]) == 1:
+                    cur = edges_dict[cur][0]
+                    children_list.append(cur)
+                # mask 
+                for i in range(len(children_list) - 1):
+                    for j in range(i + 1, len(children_list)):
+                        mask[children_list[i], children_list[j]] = 1
+                        mask[children_list[j], children_list[i]] = 1
+                
+                root = cur 
+            
+            for child in edges_dict[root]:
+                helper(child)
+        
+        # start recursion 
+        helper(root)
+        return mask 
 
     
 # ===========================================================

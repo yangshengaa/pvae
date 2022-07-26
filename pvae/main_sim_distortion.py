@@ -65,8 +65,8 @@ parser.add_argument('--lr', type=float, default=1e-4,
 ## Objective
 parser.add_argument('--use-euclidean',  action='store_true', default=False,
                     help='use hyperbolic or euclidean distance for outputs, default=False')
-parser.add_argument('--loss-function', help='type of loss function', default='scaled', type=str, 
-                    choices=['raw', 'relative', 'scaled', 'robust_scaled', 'distortion', 'individual_distortion', 'modified_individual_distortion', 'robust_individual_distortion', 'learning_relative'])
+parser.add_argument('--loss-function', help='type of loss function', default='scaled', type=str)
+                    # choices=['raw', 'relative', 'scaled', 'robust_scaled', 'distortion', 'individual_distortion', 'modified_individual_distortion', 'robust_individual_distortion', 'learning_relative'])
 
 ### Model
 parser.add_argument('--latent-dim', type=int, default=10,
@@ -102,6 +102,7 @@ parser.add_argument('--lift-type', default='expmap', choices=['expmap', 'direct'
                     help='method to lift euclidean features to hyperbolic space, now supporting expmap, direct, and sinh_direct')
 parser.add_argument('--no-bn', action="store_true", default=False,
                     help='turn on to disable batch normalization')
+parser.add_argument('--read-ancestral-mask', default=False, action='store_true', help='whether to read ancestral mask and compute corresponding metrics')
 
 ## Prior
 parser.add_argument('--prior-iso', action='store_true',
@@ -119,8 +120,7 @@ parser.add_argument('--seed', type=int, default=0,
                     metavar='S', help='random seed (default: 1)')
 
 ### model save 
-parser.add_argument('--save-model-emb', action='store_true', default=False, 
-                    help='whether to save the trained embeddings')
+parser.add_argument('--log-model', default=False, action='store_true', help='serialize pytorch model')
 parser.add_argument('--no-final-clip', action='store_true', default=False,
                     help='whether to save the clipped final embeddings')
 parser.add_argument('--log-train', action='store_true', default=False,
@@ -136,6 +136,7 @@ parser.add_argument('--save-each-epoch', action='store_true', default=False,
 parser.add_argument('--record-name', type=str, default='',
                     help='the name of the record file')
 parser.add_argument('--model-save-dir', type=str, default='results', help='the path to store model pt and emb vis')
+parser.add_argument('--use-translation', default=False, action='store_true', help='enable translation in visualization')
 
 
 args = parser.parse_args()
@@ -161,7 +162,7 @@ else:
 
 # for specific loss functions, additional learning parameters need to be appended for update 
 loss_function_type = args.loss_function
-if loss_function_type == 'learning_relative':
+if 'learning' in loss_function_type:
     alpha = Parameter(torch.tensor(1.))  # initialize to 1 
     model.learning_alpha = alpha
     optimizer.add_param_group({'params': alpha})
@@ -221,6 +222,12 @@ if args.log_train:
     # Initialize tensorboard writer
     tb_writer = SummaryWriter(log_dir=model_save_dir)
 
+# ancestral 
+if args.read_ancestral_mask:
+    with open(os.path.join(path_config['dataset_root'], args.data_params[0], 'sim_tree_ancestral_mask.npy'), 'rb') as f:
+        ancestral_mask = np.load(f)
+    ancestral_mask = torch.as_tensor(ancestral_mask, device=device)
+
 
 # ==========================================================
 def train(epoch, agg):
@@ -247,12 +254,22 @@ def train(epoch, agg):
 
     # compute metric
     if epoch % args.save_freq == 0 or (epoch % args.log_train_epochs == 0 and args.log_train):
-        ( 
-            distortion, individual_distortion, max_distortion,
-            relative_rate, scaled_rate,
-            contractions_std, expansions_std,
-            diameter 
-        ) = metric_report(emb_dists_selected, real_dists_selected, emb_dists, shortest_path_mat)
+        if not args.read_ancestral_mask:
+            ( 
+                distortion, individual_distortion, max_distortion,
+                relative_rate, scaled_rate,
+                contractions_std, expansions_std,
+                diameter 
+            ) = metric_report(emb_dists_selected, real_dists_selected, emb_dists, shortest_path_mat)
+        else:
+            ( 
+                distortion, individual_distortion, max_distortion,
+                relative_rate, scaled_rate,
+                contractions_std, expansions_std,
+                diameter,
+                ancestral_distortion, ancestral_individual_distortion, ancestral_max_distortion, 
+                non_ancestral_distortion, non_ancestral_individual_distortion, non_ancestral_max_distortion, 
+            ) = metric_report(emb_dists_selected, real_dists_selected, emb_dists, shortest_path_mat, ancestral_mask)
 
         # log 
         agg['train_loss'].append(b_loss)
@@ -265,19 +282,50 @@ def train(epoch, agg):
         agg['expansions_std'].append(expansions_std)
         agg['diameter'].append(diameter)
 
+        if args.read_ancestral_mask: 
+            agg['ancestral_distortion'].append(ancestral_distortion)
+            agg['ancestral_individual_distortion'].append(ancestral_individual_distortion)
+            agg['ancestral_max_distortion'].append(ancestral_max_distortion)
+            agg['non_ancestral_distortion'].append(non_ancestral_distortion)
+            agg['non_ancestral_individual_distortion'].append(non_ancestral_individual_distortion)
+            agg['non_ancestral_max_distortion'].append(non_ancestral_max_distortion)
+
+
         # print 
         if epoch % args.save_freq == 0:
-            print(f'====> Epoch: {epoch:04d}, ' + 
-            f'Loss: {b_loss:.4f}, Distortion: {distortion:.4f}, Idv Distortion: {individual_distortion:.4f}, Max Distortion {max_distortion:.2f}, ' + 
-            f'relative: {relative_rate:.2f}, scaled: {scaled_rate:.2f}, ' + 
-            f'Contraction Std {contractions_std:.4f}, Expansion Std {expansions_std:.6f}, Diameter {diameter:.2f}')
+            metrics_msg = (
+                f'Loss: {b_loss:.4f}, dist: {distortion:.4f}, Idv dist: {individual_distortion:.4f}, Max dist {max_distortion:.2f}, ' +
+                f'relative: {relative_rate:.2f}, scaled: {scaled_rate:.2f}, ' +
+                f'Contraction Std {contractions_std:.4f}, Expansion Std {expansions_std:.6f}, Diameter {diameter:.2f}'
+            )
+            if args.read_ancestral_mask:
+                metrics_msg += ', '
+                metrics_msg += (
+                    f'anc dist: {ancestral_distortion:.4f}, anc Idv dist: {ancestral_individual_distortion:.4f}, anc Max dist: {ancestral_max_distortion:.2f}, ' + 
+                    f'non_anc dist: {non_ancestral_distortion:.4f}, non_anc Idv dist: {non_ancestral_individual_distortion:.4f}, non_anc Max dist: {non_ancestral_max_distortion:.2f}' 
+                )
+            print(f'====> Epoch: {epoch:04d}, ', metrics_msg)
     
     # tensorboard visualization 
         if args.log_train:
             with torch.no_grad():
                 # visualize 
-                trained_emb = reconstructed_data.cpu().numpy()  # feed back to cpu to plot 
-                fig = visualize_embeddings(trained_emb, edges, model_save_dir_name, loss, diameter, thr, distortion)
+                trained_emb = reconstructed_data.detach().cpu().numpy()  # feed back to cpu to plot 
+                fig = visualize_embeddings(
+                    trained_emb,
+                    edges,
+                    shortest_path_mat,
+                    model_save_dir_name,
+                    args.manifold,
+                    thr,
+                    use_translation=args.use_translation,
+                    root_idx=0,
+                    c=args.c,
+
+                    loss=b_loss, 
+                    distortion=distortion, 
+                    diameter=diameter 
+                )
                 img_arr = convert_fig_to_array(fig)
                 img_arr = torch.tensor(img_arr)
 
@@ -285,40 +333,26 @@ def train(epoch, agg):
                 tb_writer.add_image('embedding/embedding_image', img_arr, epoch, dataformats='HWC')
 
                 # add metrics 
-                tb_writer.add_scalar('loss/loss', loss, epoch)
-                tb_writer.add_scalar('distortion/distortion', distortion, epoch)
-                tb_writer.add_scalar('individual_distortion/individual_distortion', individual_distortion, epoch)
-                tb_writer.add_scalar('max_distortion/max_distortion', max_distortion, epoch)
-                tb_writer.add_scalar('relative/relative', relative_rate, epoch)
-                tb_writer.add_scalar('scaled/scaled', scaled_rate, epoch)
-                tb_writer.add_scalar('contraction_std/contraction_std', contractions_std, epoch)
-                tb_writer.add_scalar('expansion_std/expansion_std', expansions_std, epoch)
-                tb_writer.add_scalar('diameter/diameter', diameter, epoch)
+                tb_writer.add_scalar('train/loss', loss, epoch)
+                tb_writer.add_scalar('train/distortion', distortion, epoch)
+                tb_writer.add_scalar('train/individual_distortion', individual_distortion, epoch)
+                tb_writer.add_scalar('train/max_distortion', max_distortion, epoch)
+                tb_writer.add_scalar('train/relative', relative_rate, epoch)
+                tb_writer.add_scalar('train/scaled', scaled_rate, epoch)
+                tb_writer.add_scalar('train/contraction_std', contractions_std, epoch)
+                tb_writer.add_scalar('train/expansion_std', expansions_std, epoch)
+                tb_writer.add_scalar('train/diameter', diameter, epoch)
+
+                if args.read_ancestral_mask:
+                    tb_writer.add_scalar('train/ancestral_distortion', ancestral_distortion, epoch)
+                    tb_writer.add_scalar('train/ancestral_individual_distortion', ancestral_individual_distortion, epoch)
+                    tb_writer.add_scalar('train/ancestral_max_distortion', ancestral_max_distortion, epoch)
+                    tb_writer.add_scalar('train/non_ancestral_distortion', non_ancestral_distortion, epoch)
+                    tb_writer.add_scalar('train/non_ancestral_individual_distortion', non_ancestral_individual_distortion, epoch)
+                    tb_writer.add_scalar('train/non_ancestral_max_distortion', non_ancestral_max_distortion, epoch)
                 
                 # flush to disk
                 tb_writer.flush()
-
-
-def save_emb():
-    """ save final embeddings """
-    with torch.no_grad():
-        for _, (data, _) in enumerate(overall_loader):
-            data_emb = model(data).squeeze()
-
-        # clip
-        if not args.no_final_clip:
-            data_emb = data_emb * torch.clamp(thr / torch.linalg.norm(data_emb, dim=1, keepdim=True), max=1)
-        data_emb_np = data_emb.numpy()
-        
-        # save 
-        save_path = 'experiments'
-        if 'Mixture' in args.enc: 
-            model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},{args.hidden_dims},{args.num_hyperbolic_layers},{args.no_final_lift},{args.lift_type},{args.no_bn},'
-        else:
-            model_params = f'{args.data_params[0]},{args.data_size[0]},{args.latent_dim},{args.enc},{args.use_hyperbolic},{args.c},{args.loss_function},{args.no_bn},'
-        with open(os.path.join(save_path, model_params + '_data_emb.npy'), 'wb') as f:
-            np.save(f, data_emb_np)
-
 
 def record_info(agg):
     """ record loss and distortion """
@@ -339,11 +373,16 @@ def record_info(agg):
         f'{agg["diameter"][-1]:.2f}'
     )
 
-    # if args.save_each_epoch:
-    #     loss_report = basic_params + ','.join([f"{agg['train_loss'][i]:.4f}" for i in range(len(agg['train_loss']))])
-    #     distortion_report = basic_params + ','.join([f"{agg['distortion'][i]:.5f}" for i in range(len(agg['distortion']))])
-    #     max_distortion_report = basic_params + ','.join([f"{agg['max_distortion'][i]:.5f}" for i in range(len(agg['max_distortion']))])
-    #     individual_distortion_report = basic_params + ','.join([f"{agg['individual_distortion'][i]:.5f}" for i in range(len(agg['individual_distortion']))])
+    if args.read_ancestral_mask:
+        main_report += ','
+        main_report += (
+            f'{agg["ancestral_distortion"][-1]:.4f},' + 
+            f'{agg["ancestral_individual_distortion"][-1]:.4f},' + 
+            f'{agg["ancestral_max_distortion"][-1]:.2f},' + 
+            f'{agg["non_ancestral_distortion"][-1]:.4f},' + 
+            f'{agg["non_ancestral_individual_distortion"][-1]:.4f},' + 
+            f'{agg["non_ancestral_max_distortion"][-1]:.2f}'
+        )
 
     # write to file 
     sim_record_path = path_config['sim_record_path']
@@ -352,20 +391,6 @@ def record_info(agg):
         f.write(main_report)
         f.write('\n')
     
-    # if args.save_each_epoch:
-    #     with open(os.path.join(sim_record_path, f'sim_loss_{args.record_name}.txt' if cluster == 0 else f'sim_loss_{args.record_name}_{cluster}.txt'), 'a') as f:
-    #         f.write(loss_report)
-    #         f.write('\n')
-    #     with open(os.path.join(sim_record_path, f'sim_distortion_{args.record_name}.txt' if cluster == 0 else f'sim_distortion_{args.record_name}_{cluster}.txt'), 'a') as f:
-    #         f.write(distortion_report)
-    #         f.write('\n')
-    #     with open(os.path.join(sim_record_path, f'sim_max_distortion_{args.record_name}.txt' if cluster == 0 else f'sim_max_distortion_{args.record_name}_{cluster}.txt'), 'a') as f:
-    #         f.write(max_distortion_report)
-    #         f.write('\n')
-    #     with open(os.path.join(sim_record_path, f'sim_individual_distortion_{args.record_name}.txt' if cluster == 0 else f'sim_individual_distortion_{args.record_name}_{cluster}.txt'), 'a') as f:
-    #         f.write(individual_distortion_report)
-    #         f.write('\n')
-        
 
 def main():
     """ main running """
@@ -378,9 +403,9 @@ def main():
             train(epoch, agg)
 
         # save embeddings 
-        if args.save_model_emb:
-            save_emb()
-        
+        if args.log_model:
+            torch.save(model, os.path.join(model_save_dir, 'model.pt'))
+
         # record simulation results
         if not args.no_model_report:
             record_info(agg)

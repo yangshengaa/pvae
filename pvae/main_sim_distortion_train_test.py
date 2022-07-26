@@ -118,8 +118,7 @@ parser.add_argument('--seed', type=int, default=0,
                     metavar='S', help='random seed (default: 1)')
 
 ### model save 
-parser.add_argument('--save-model-emb', action='store_true', default=False, 
-                    help='whether to save the trained embeddings')
+parser.add_argument('--log-model', default=False, action='store_true', help='serialize pytorch model')
 parser.add_argument('--no-final-clip', action='store_true', default=False,
                     help='whether to save the clipped final embeddings')
 parser.add_argument('--log-train', action='store_true', default=False,
@@ -158,7 +157,7 @@ else:
 
 # for specific loss functions, additional learning parameters need to be appended for update 
 loss_function_type = args.loss_function
-if loss_function_type == 'learning_relative':
+if 'learning' in loss_function_type:
     alpha = Parameter(torch.tensor(1.))  # initialize to 1 
     model.learning_alpha = alpha
     optimizer.add_param_group({'params': alpha})
@@ -406,6 +405,9 @@ def main():
 
         for epoch in range(1, args.epochs + 1):
             train(epoch, agg)
+        
+        if args.log_model:
+            torch.save(model, os.path.join(model_save_dir, 'model.pt'))
         
         # record simulation results
         if not args.no_model_report:

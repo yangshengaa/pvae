@@ -107,9 +107,22 @@ def _relative_pairwise_dist_loss(emb_dists_selected, real_dists_selected):
     loss = torch.mean((emb_dists_selected / real_dists_selected - 1) ** 2)
     return loss 
 
+def _modified_relative_pairwise_dist_loss(emb_dists_selected, real_dists_selected):
+    """
+    modified relative 
+    ((d_e / d_r) ** 2 - 1) ** 2
+    """
+    loss = torch.mean(((emb_dists_selected / real_dists_selected) ** 2 - 1) ** 2)
+    return loss 
+
 def _relative_learning_pairwise_dist_loss(emb_dists_selected, real_dists_selected, alpha: torch.nn.parameter.Parameter):
     """ relative loss with an additional learning parameter """
     loss = torch.mean((alpha * emb_dists_selected / real_dists_selected - 1) ** 2)
+    return loss 
+
+def _modified_relative_learning_pairwise_dist_loss(emb_dists_selected, real_dists_selected, alpha: torch.nn.parameter.Parameter):
+    """ modified relative loss with an additional learning parameter """
+    loss = torch.mean((alpha * (emb_dists_selected / real_dists_selected) ** 2 - 1) ** 2)
     return loss 
 
 def _scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected):
@@ -193,6 +206,13 @@ def _max_distortion_rate(contractions, expansions):
         distortion = contraction * expansion
         return distortion
 
+@torch.no_grad()
+def _nan_max_distortion_rate(contractions, expansions):
+    contraction = torch.max(torch.nan_to_num(contractions, nan=0.))
+    expansion = torch.max(torch.nan_to_num(expansions, nan=0.))
+    distortion = contraction * expansion 
+    return distortion 
+
 
 def _distortion_rate(contractions, expansions):
     """ compute 'average' distortion rate """
@@ -201,12 +221,35 @@ def _distortion_rate(contractions, expansions):
         expansion = torch.mean(expansions)          # mean 
         distortion = contraction * expansion
         return distortion
+
+@torch.no_grad()
+def _nan_distortion_rate(contractions, expansions):
+    """ handle nan """
+    contraction = torch.nanmean(contractions)
+    expansion = torch.nanmean(expansions)
+    distortion = contraction * expansion 
+    return distortion
     
 def _individual_distortion_rate(emb_dists, real_dists):
     """ compute the average avarage distortion rate """
     with torch.no_grad():
         return _individual_distortion_loss(emb_dists, real_dists)
 
+
+@torch.no_grad()
+def _nan_individual_distortion_rate(emb_dists, real_dists):
+    n = real_dists.shape[0]
+    pairwise_contraction = real_dists / (emb_dists + Constants.eta)
+    pairwise_expansion = emb_dists / (real_dists + Constants.eta)
+    pairwise_contraction.fill_diagonal_(torch.nan)
+    pairwise_expansion.fill_diagonal_(torch.nan)
+
+    individual_pairwise_contraction = pairwise_contraction.nanmean(axis=1)
+    individual_pairwise_expansion = pairwise_expansion.nanmean(axis=1)
+    individual_distortion = individual_pairwise_contraction * individual_pairwise_expansion
+    
+    loss =  individual_distortion.nanmean()
+    return loss
 
 def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=False, loss_function_type='scaled', c=1, thr=0.9):
     """
@@ -235,6 +278,8 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
         loss = _pairwise_dist_loss(emb_dists_selected, real_dists_selected)
     elif loss_function_type == 'relative':
         loss = _relative_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
+    elif loss_function_type == 'modified_relative':
+        loss = _modified_relative_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
     elif loss_function_type == 'scaled':
         loss = _scaled_pairwise_dist_loss(emb_dists_selected, real_dists_selected)
     elif loss_function_type == 'robust_scaled':
@@ -249,6 +294,8 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
         loss = _robust_individual_distortion_loss(emb_dists, shortest_path_mat)
     elif loss_function_type == 'learning_relative':
         loss = _relative_learning_pairwise_dist_loss(emb_dists_selected, real_dists_selected, model.learning_alpha)
+    elif loss_function_type == 'modified_learning_relative':
+        loss = _modified_relative_learning_pairwise_dist_loss(emb_dists_selected, real_dists_selected, model.learning_alpha)
     else:
         raise NotImplementedError(f'loss function type {loss_function_type} not available')
 
@@ -257,7 +304,8 @@ def ae_pairwise_dist_objective(model, data, shortest_path_mat, use_hyperbolic=Fa
 
 def metric_report(
         emb_dists_selected, real_dists_selected,
-        emb_dists, real_dists
+        emb_dists, real_dists,
+        ancestral_mask=None
     ):
     """ report metric along training """
     with torch.no_grad():
@@ -275,9 +323,40 @@ def metric_report(
 
         diameter = _diameter(emb_dists_selected)
 
-        return (
-            distortion_rate, individual_distortion_rate, max_distortion_rate, 
-            relative_rate, scaled_rate, 
-            contractions_std, expansions_std, 
-            diameter
-        )
+        # ancestral mask 
+        if not ancestral_mask is None:
+            non_ancestral_mask = 1 - ancestral_mask - torch.eye(ancestral_mask.shape[0], device=ancestral_mask.device)
+
+            # create nan mask
+            ancestral_nan_mask = ancestral_mask / ancestral_mask
+            non_ancestral_nan_mask = non_ancestral_mask / non_ancestral_mask
+
+            all_contractions = real_dists / emb_dists 
+            all_expansions = emb_dists / real_dists
+            
+            ancestral_distortion = _nan_distortion_rate(all_contractions * ancestral_nan_mask, all_expansions * ancestral_nan_mask)
+            ancestral_individual_distortion = _nan_individual_distortion_rate(all_contractions * ancestral_nan_mask, all_expansions * ancestral_nan_mask)
+            ancestral_max_distortion = _nan_max_distortion_rate(all_contractions * ancestral_nan_mask, all_expansions * ancestral_nan_mask)
+
+            non_ancestral_distortion = _nan_distortion_rate(all_contractions * non_ancestral_nan_mask, all_expansions * non_ancestral_nan_mask)
+            non_ancestral_individual_distortion = _nan_individual_distortion_rate(all_contractions * non_ancestral_nan_mask, all_expansions * non_ancestral_nan_mask)
+            non_ancestral_max_distortion = _nan_max_distortion_rate(all_contractions * non_ancestral_nan_mask, all_expansions * non_ancestral_nan_mask)
+
+
+        if ancestral_mask is None: 
+            return (
+                distortion_rate, individual_distortion_rate, max_distortion_rate, 
+                relative_rate, scaled_rate, 
+                contractions_std, expansions_std, 
+                diameter
+            )
+        else:
+            return (
+                distortion_rate, individual_distortion_rate, max_distortion_rate, 
+                relative_rate, scaled_rate, 
+                contractions_std, expansions_std, 
+                diameter,
+
+                ancestral_distortion, ancestral_individual_distortion, ancestral_max_distortion,
+                non_ancestral_distortion, non_ancestral_individual_distortion, non_ancestral_max_distortion
+            )

@@ -29,6 +29,10 @@ from vis import convert_fig_to_array, visualize_train_test_embeddings
 
 torch.backends.cudnn.benchmark = True
 
+# force torch float64 
+dtype = torch.float64
+torch.set_default_dtype(dtype)
+
 # path config 
 path_config = load_config(dataset_key='train_test')
 
@@ -145,7 +149,7 @@ args.batch_size = 1  # dummy variable, useless since all are trained using a ful
 # ==============================================================
 # Initialise model, optimizer, dataset loader and loss function
 modelC = getattr(models, 'Enc_{}'.format(args.model))
-model = modelC(args).to(device)
+model = modelC(args).to(device).to(dtype)
 
 # select optimizer
 if args.opt == 'adam':
@@ -165,14 +169,14 @@ if 'learning' in loss_function_type:
 # =============================================================
 # load data
 train_loader, train_shortest_path_mat = model.getDataLoaders(
-    args.batch_size, True, device, *args.data_params, path_config['dataset_root'], f'train_{args.train_test_index}'
+    args.batch_size, True, device, dtype, *args.data_params, path_config['dataset_root'], f'train_{args.train_test_index}'
 )
 test_loader, test_shortest_path_mat = model.getDataLoaders(
-    args.batch_size, True, device, *args.data_params, path_config['dataset_root'], f'test_{args.train_test_index}'
+    args.batch_size, True, device, dtype, *args.data_params, path_config['dataset_root'], f'test_{args.train_test_index}'
 )
 loss_function = ae_pairwise_dist_objective  
-train_shortest_path_mat = train_shortest_path_mat.to(device)
-test_shortest_path_mat = test_shortest_path_mat.to(device)
+train_shortest_path_mat = train_shortest_path_mat.to(device).to(dtype)
+test_shortest_path_mat = test_shortest_path_mat.to(device).to(dtype)
 
 # parameters for ae objectives 
 use_hyperbolic = False if args.use_euclidean else True

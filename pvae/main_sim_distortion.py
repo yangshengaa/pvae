@@ -27,6 +27,11 @@ from vis import convert_fig_to_array, visualize_embeddings
 
 torch.backends.cudnn.benchmark = True
 
+# force torch float64
+dtype = torch.float64
+torch.set_default_dtype(dtype) # force torch.64
+
+
 # load path config 
 path_config = load_config()
 
@@ -149,7 +154,7 @@ args.batch_size = 1  # dummy variable, useless since all are trained using a ful
 # ==============================================================
 # Initialise model, optimizer, dataset loader and loss function
 modelC = getattr(models, 'Enc_{}'.format(args.model))
-model = modelC(args).to(device)
+model = modelC(args).to(device).to(torch.float64)  # force 64
 
 # select optimizer
 if args.opt == 'adam':
@@ -170,10 +175,10 @@ if 'learning' in loss_function_type:
 # =============================================================
 # load data
 overall_loader, shortest_path_mat = model.getDataLoaders(
-    args.batch_size, True, device, *args.data_params, path_config['dataset_root']
+    args.batch_size, True, device, dtype, *args.data_params, path_config['dataset_root']
 )
 loss_function = ae_pairwise_dist_objective  
-shortest_path_mat = shortest_path_mat.to(device)
+shortest_path_mat = shortest_path_mat.to(device).to(torch.float64)
 
 # parameters for ae objectives 
 use_hyperbolic = False if args.use_euclidean else True
@@ -226,7 +231,7 @@ if args.log_train:
 if args.read_ancestral_mask:
     with open(os.path.join(path_config['dataset_root'], args.data_params[0], 'sim_tree_ancestral_mask.npy'), 'rb') as f:
         ancestral_mask = np.load(f)
-    ancestral_mask = torch.as_tensor(ancestral_mask, device=device)
+    ancestral_mask = torch.as_tensor(ancestral_mask, device=device, dtype=torch.float64)
 
 
 # ==========================================================
@@ -404,7 +409,7 @@ def main():
 
         # save embeddings 
         if args.log_model:
-            torch.save(model, os.path.join(model_save_dir, 'model.pt'))
+            save_model(model, os.path.join(model_save_dir, 'model.pt'))
 
         # record simulation results
         if not args.no_model_report:

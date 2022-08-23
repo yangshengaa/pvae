@@ -238,14 +238,14 @@ class EncMixture(nn.Module):
         
         # construct bridging map 
         bridge_manifold = getattr(manifolds, self.manifold_type)(self.dims_list[k], self.c)
+        if self.no_final_lift and l == 0:  # no hyperbolic layer and no lifting at the end
+            bridge_map = nn.Identity()
         if self.lift_type == 'expmap': 
             bridge_map = bridge_manifold.expmap0
         elif self.lift_type == 'direct':
             bridge_map = bridge_manifold.direct_map
         elif self.lift_type == 'sinh_direct':
             bridge_map = bridge_manifold.sinh_direct_map
-        elif self.no_final_lift and l == 0:  # no hyperbolic layer and no lifting at the end
-            bridge_map == nn.Identity()
         else:
             raise NotImplementedError(f'lifting type {self.lift_type} not supported')
 

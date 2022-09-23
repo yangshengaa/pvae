@@ -600,6 +600,132 @@ class explicit_tree(ConcreteSyntheticDatasetParent):
             proportion_permute=self.kwargs['proportion_permute']
         )
 
+class centipede(ConcreteSyntheticDatasetParent):
+    """ a centipede """
+    def make_dataset(self):
+        tree_depth = 20
+
+        nodes_positions = [[0, 0]]
+        edges = []
+        # pos range 
+        count = 0
+        idx = 0
+        while count < tree_depth:
+            count += 1
+            nodes_positions.append([count, 0])
+            nodes_positions.append([count, np.random.uniform(0.2, 1)])
+            nodes_positions.append([count, -np.random.uniform(0.2, 1)])
+            idx += 3
+            
+            if count == 1:
+                edges.append((idx - 3, idx - 2))
+            else:
+                edges.append((idx - 5, idx - 2))
+            edges.append((idx - 2, idx - 1))
+            edges.append((idx - 2, idx))
+
+        
+        # neg range 
+        count = 0
+        while count > - tree_depth:
+            count -= 1
+            nodes_positions.append([count, 0])
+            nodes_positions.append([count, np.random.uniform(0.2, 1)])
+            nodes_positions.append([count, -np.random.uniform(0.2, 1)])
+
+            idx += 3
+            if count == -1:
+                edges.append((0, idx - 2))
+            else:
+                edges.append((idx - 5, idx - 2))
+            edges.append((idx - 2, idx - 1))
+            edges.append((idx - 2, idx))
+
+        nodes_positions = np.vstack(nodes_positions) / tree_depth
+
+        self.dataset = SyntheticTreeDistortionDataSetPermute(
+            nodes_positions, edges, 
+            to_permute=self.kwargs['to_permute'], 
+            permute_type=self.kwargs['permute_type'], 
+            use_path_length=self.kwargs['use_path_length'], 
+            proportion_permute=self.kwargs['proportion_permute']
+        )
+
+
+class centipede_grow(ConcreteSyntheticDatasetParent):
+    """
+    growing centipede 
+    """
+    def make_dataset(self):
+        tree_depth = 10
+        
+        
+        nodes_positions = [[0, 0]]
+        edges = []
+
+        # pos range 
+        count = 0
+        idx = 0
+        while count < tree_depth:
+            count += 1
+            idx += 1
+            nodes_positions.append([count, 0])
+            edges.append((idx - (2 * count - 1), idx))
+
+            center_idx = idx 
+            for height in range(count):
+                idx += 1
+                nodes_positions.append([count, height + 1])
+                if height == 0:
+                    edges.append((center_idx, idx))
+                else:
+                    edges.append((idx - 1, idx))
+            for height in range(count):
+                idx += 1
+                nodes_positions.append([count, - height - 1])
+                if height == 0:
+                    edges.append((center_idx, idx))
+                else:
+                    edges.append((idx - 1, idx))
+
+        # neg range 
+        count = 0
+        while count > - tree_depth:
+            count -= 1
+            idx += 1
+            nodes_positions.append([count, 0])
+            if count == -1:
+                edges.append((0, idx))
+            else:
+                edges.append((idx - (2 * (-count) - 1), idx))
+
+            center_idx = idx 
+            for height in range(-count):
+                idx += 1
+                nodes_positions.append([count, height + 1])
+                if height == 0:
+                    edges.append((center_idx, idx))
+                else:
+                    edges.append((idx - 1, idx))
+            for height in range(-count):
+                idx += 1
+                nodes_positions.append([count, - height - 1])
+                if height == 0:
+                    edges.append((center_idx, idx))
+                else:
+                    edges.append((idx - 1, idx))
+
+        nodes_positions = np.vstack(nodes_positions) / tree_depth
+
+        self.dataset = SyntheticTreeDistortionDataSetPermute(
+            nodes_positions, edges, 
+            to_permute=self.kwargs['to_permute'], 
+            permute_type=self.kwargs['permute_type'], 
+            use_path_length=self.kwargs['use_path_length'], 
+            proportion_permute=self.kwargs['proportion_permute']
+        )
+
+
 class transform_dataset(ConcreteSyntheticDatasetParent):
     """ 
     this one permutes other trees by assinging 
